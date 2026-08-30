@@ -11,7 +11,7 @@ import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep, reset_cause
 import esp32
-from functools import partial
+
 
 original_print = print
 def custom_log_print(*args, **kwargs):
