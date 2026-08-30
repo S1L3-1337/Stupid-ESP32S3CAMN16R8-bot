@@ -25,7 +25,6 @@ print = custom_log_print
 print(f"[INFO] [INITIAL] initial free available memory: {gc.mem_free()}")
 print(f"[INFO] [INITIAL] latest reset caused by: {reset_cause()}")
 
-print("[INFO] [INITIAL] reading from RTC memory...")
 rtc_json = {"config": {}, "auth": {}}
 if rtc_content := RTC().memory():
     try:
@@ -39,7 +38,6 @@ else:
     print("[WARN] [INITIAL] RTC memory invalid. Loading config from file...")
 if not rtc_json["config"]:
     try:
-        print("[INFO] [INITIAL] reading config.json's content...")
         with open("config.json") as f:
             rtc_json["config"] = ujson.load(f)
     except OSError as e:
@@ -52,7 +50,6 @@ if not rtc_json["config"]:
         }
 if not rtc_json["auth"]:
     try:
-        print("[INFO] [INITIAL] reading authorized.json's content...")
         with open("authorized.json", mode='r') as f:
             rtc_json["auth"] = ujson.load(f)
     except OSError as e:
@@ -74,7 +71,6 @@ _BOOT_TICK = time.ticks_ms()
 wlan = network.WLAN(network.STA_IF)
 session = aiohttp.ClientSession()
 
-print("[INFO] [INITIAL] Initializing Camera...")
 cam = Camera(
     data_pins=[11, 9, 8, 10, 12, 18, 17, 16],
     vsync_pin=6, href_pin=7, sda_pin=4, scl_pin=5,
@@ -88,7 +84,6 @@ cam = Camera(
     init=False
 )
 cam.init()
-print("[INFO] [INITIAL] Safety Cooldown for 5s...")
 time.sleep(5)
 
 enc = jpeg.Encoder(
@@ -102,7 +97,6 @@ enc = jpeg.Encoder(
 wdt = WDT(timeout=80000)
 
 def get_uptime(unit: str = 'D'):
-    print("[INFO] [UPTIME] calculating uptime...")
     uptime_ms = time.ticks_diff(time.ticks_ms(), _BOOT_TICK)
     if unit == 'D':
         return uptime_ms / 86_400_000
@@ -113,15 +107,12 @@ def get_uptime(unit: str = 'D'):
         raise ValueError
 
 def capture_image():
-    print("[INFO] [CAM] capturing new image...")
     frame = cam.capture()
     if frame:
         rgb565_bytes = bytes(frame)
         print(f"[INFO] [CAM] Captured {len(rgb565_bytes)} bytes of raw RGB565")
-        print("[INFO] [CAM] Encoding image from RGB565 to jpeg format.")
         jpeg = enc.encode(rgb565_bytes)
         print(f"[INFO] [CAM] file encoded Successfully! image size: {len(jpeg)} bytes")
-        print("[INFO] [CAM] cleaning the buffer...")
         cam.free_buffer()
         now = time.gmtime()
         return jpeg, "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
@@ -143,16 +134,14 @@ def connect_wifi():
     while not wlan.isconnected():
         time.sleep_ms(500)
         print(".", end="")
-    print("[INFO] [WIFI] Connected! Connection config: ", wlan.ifconfig())
+    print("[INFO] [WIFI] Connected! IP: ", wlan.ifconfig()[0])
 
 async def update_offset(offset_id: str):
     global rtc_json
     if get_uptime('H') > 12:
         print("[INFO] [OFFSET] 12h uptime limit reached.")
-        print("[INFO] [OFFSET] updating config.json with new offset_id...")
         config["l_offset"] = offset_id
         try:
-            print("[INFO] [OFFSET] writing the new offset_id...")
             with open("config.json.temp", mode='w') as f:
                 ujson.dump(config, f)
             os.rename("config.json.temp", "config.json")
@@ -160,9 +149,7 @@ async def update_offset(offset_id: str):
         except OSError as e:
             print("[WARN] [OFFSET] an error occured during write operation on config.json")
     else:
-        print("[INFO] [OFFSET] device uptime is less than 12 hours.")
         try:
-            print("[INFO] [OFFSET] updating RTC memory with new offset_id...")
             rtc_json['config']['l_offset'] = offset_id
             RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
         except Exception as e:
@@ -185,8 +172,6 @@ async def get_updates(offset_id: str, lim: int = 10):
                 next_offset = updates_data.get("next_offset_id", offset_id)
                 if next_offset != offset_id:
                     idle_count = 0
-                    print("[INFO] [UPDATES] new offset_id detected.")
-                    print("[INFO] [UPDATES] updating offset_id...")
                     updates = updates_data.get("updates", [])
                     latest_offset = next_offset
                     await update_offset(next_offset)
@@ -204,19 +189,15 @@ async def get_updates(offset_id: str, lim: int = 10):
                             sender_id = None
                             message_id = None
                         else:
-                            print("[INFO] [UPDATES] offset_id didn't, no new [supported] updates yet.")
                             continue
                         await command_routing(msgtype, chat_id, text, sender_id, message_id)
                 else:
-                    print("[INFO] [UPDATES] next_offset_id is identical to l_offset. passing...")
                     idle_count += 1
                     if idle_count > 100:
                         print("[INFO] [UPDATES] idle_count reached 100. entering lightsleep for 5 minutes...")
-                        print("[INFO] [UPDATES] feeding CPU WATCHDOG timer...")
                         wdt.feed()
                         lightsleep(300000)
                         print("[INFO] [UPDATES] lightsleep finished.")
-                        print("[INFO] [UPDATES] reconnecting to WiFi again...")
                         wlan.disconnect()
                         connect_wifi()
                         idle_count = 0
@@ -254,19 +235,15 @@ async def send_text_message(chat_id: str, msg: str):
             "text": msg,
         }
         try:
-            print(f"[INFO] [MESSAGE] Sending message to {chat_id}...")
             async with session.request('POST', f"{URL}/sendMessage", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
                 result = await response.json()
-                if "data" in result or result.get("status") == "OK":
-                    print(f"[INFO] [MESSAGE] message sent to {chat_id}")
-                else:
+                if not ("data" in result or result.get("status") == "OK"):
                     print(f"[WARN] [MESSAGE] sending message to {chat_id} failed.")
         except Exception as e:
             print(f"[ERROR] [MESSAGE] network failure")
             raise e
 
 async def get_info_str(chat_id: str):
-    print("[INFO] [GET_INFO] getting MCU's info...")
     now = time.gmtime()
     vfs = os.statvfs("/")
     free_kb = (vfs[0] * vfs[3]) // 1024
@@ -277,26 +254,21 @@ async def get_info_str(chat_id: str):
 
 def block_user(chat_id: str):
     global rtc_json
-    print(f"[INFO] [BLOCK] blocking {chat_id}...")
     if "blocked_chats" not in AUTH_USERS:
         AUTH_USERS["blocked_chats"] = []
     AUTH_USERS["blocked_chats"].append(chat_id)
     if get_uptime('H') > 12:
         print("[INFO] [BLOCK] 12h uptime limit reached.")
-        print("[INFO] [BLOCK] adding new blocked user to authorized.json...")
         try:
             with open("authorized.json.temp", mode='w') as f:
                 ujson.dump(AUTH_USERS, f)
             os.rename("authorized.json.temp", "authorized.json")
             os.sync()
-            print("[INFO] [BLOCK] User blocked and saved successfully.")
         except OSError as e:
             print(f"[ERROR] [BLOCK] Failed to write authorized.json: {e}")
             raise e
     else:
-        print("[INFO] [BLOCK] device uptime is less than 12 hours.")
         try:
-            print("[INFO] [BLOCK] adding new blocked user to RTC memory...")
             rtc_json['auth'] = AUTH_USERS
             RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
         except Exception as e:
@@ -307,7 +279,6 @@ async def send_images(chat_id, reply_message_id):
     global session
     global LAST_PUSH
     if time.ticks_diff(time.ticks_ms(), LAST_PUSH) >= 5000:
-        print(f"[INFO] [IMAGE] sending new capture to {chat_id}...")
         try:
             upload_url = ""
             async with session.request('POST', f"{URL}/requestSendFile", data=ujson.dumps({"type":"Image"}).encode("utf-8"), headers=HEADERS) as response:
@@ -333,9 +304,7 @@ async def send_images(chat_id, reply_message_id):
             return
 
         try:
-            print("[INFO] [IMAGE] uploading jpeg file...")
             file_id = None
-            print("[INFO] [IMAGE] encoding image...")
             fdata = handle_encoding(capture_data[0])
             response = urequests.post(upload_url, data=fdata[0], headers=fdata[1])
             try:
@@ -345,7 +314,6 @@ async def send_images(chat_id, reply_message_id):
 
             if "data" in result or result.get("status") == "OK":
                 file_id = result.get("data", {}).get("file_id")
-                print(f"[INFO] [IMAGE] Multipart upload successful! file_id: {file_id}")
             else:
                 print(f"[WARN] [IMAGE] Both upload methods failed. Server replied: {result}\n ERRNO=1")
                 await send_text_message(chat_id, "Upload failed. ERRNO=1")
@@ -382,16 +350,13 @@ async def send_images(chat_id, reply_message_id):
             return
 
         del capture_data
-        print("[INFO] [IMAGE] Removed image.jpg from ram.")
 
     else:
         print("[ERROR] [IMAGE] capture ratelimit exhausted. wait for 5s to finish.")
         await send_text_message(chat_id, "capture ratelimit exhausted. wait 5s before requesting another capture.")
 
 def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
-    print("[INFO] [ENCODE] encoding POST request...")
     boundary = "MicroPythonUploadBoundary123"
-
     header = (
         f"--{boundary}\r\n"
         f'Content-Disposition: form-data; name="file"; filename="image.jpg"\r\n'
@@ -414,13 +379,10 @@ async def main():
     print("[INITIAL] [MAIN] starting program...")
     connect_wifi()
 
-    print("[INFO] [MAIN] Bot is running. Listening for commands...")
     while True:
         try:
-            print("[INFO] [MAIN] feeding CPU WATCHDOG timer...")
             wdt.feed()
             await get_updates(latest_offset, 50)
-            print("[INFO] [MAIN] garbage collecting...")
             gc.collect()
             gc.collect()
             await uasyncio.sleep(5)
