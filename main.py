@@ -104,8 +104,10 @@ def get_uptime(unit: str = 'D'):
     print("[INFO] [UPTIME] calculating uptime...")
     uptime_ms = time.ticks_diff(time.ticks_ms(), _BOOT_TICK)
     match unit:
-        case 'D':   return uptime_ms / 86_400_000
-        case "H":   return uptime_ms / 3_600_000
+        case 'D':
+            return uptime_ms / 86_400_000
+        case "H":
+            return uptime_ms / 3_600_000
         case _:
             print("[ERROR] [UPTIME] unknown unit.")
             print("[ERROR] [UPTIME] unrecoverable for now... panic!")
