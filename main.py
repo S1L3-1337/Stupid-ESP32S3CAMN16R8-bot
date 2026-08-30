@@ -72,6 +72,7 @@ HEADERS = {'Content-Type': 'application/json'}
 latest_offset: str = config.get("l_offset", "")
 _BOOT_TICK = time.ticks_ms()
 wlan = network.WLAN(network.STA_IF)
+session = aiohttp.ClientSession()
 
 print("[INFO] [INITIAL] Initializing Camera...")
 cam = Camera(
@@ -178,48 +179,47 @@ async def get_updates(offset_id: str, lim: int = 10):
         }
         try:
             print(f"[INFO] [UPDATES] polling new updates... [idle_count: {idle_count}/100]")
-            async with aiohttp.ClientSession() as session:
-                async with session.request('POST', f"{URL}/getUpdates", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
-                    data = await response.json()
-                    updates_data = data.get("data", data)
-                    next_offset = updates_data.get("next_offset_id", offset_id)
-                    if next_offset != offset_id:
+            async with session.request('POST', f"{URL}/getUpdates", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
+                data = await response.json()
+                updates_data = data.get("data", data)
+                next_offset = updates_data.get("next_offset_id", offset_id)
+                if next_offset != offset_id:
+                    idle_count = 0
+                    print("[INFO] [UPDATES] new offset_id detected.")
+                    print("[INFO] [UPDATES] updating offset_id...")
+                    updates = updates_data.get("updates", [])
+                    latest_offset = next_offset
+                    await update_offset(next_offset)
+                    for update in updates:
+                        msgtype = update.get("type")
+                        if msgtype == "NewMessage":
+                            new_msg = update.get("new_message", {})
+                            chat_id = update.get("chat_id")
+                            text = new_msg.get("text", "").strip()
+                            sender_id = new_msg.get("sender_id")
+                            message_id = new_msg.get("message_id")
+                        elif msgtype == "StartedBot":
+                            chat_id = update.get("chat_id")
+                            text = None
+                            sender_id = None
+                            message_id = None
+                        else:
+                            print("[INFO] [UPDATES] offset_id didn't, no new [supported] updates yet.")
+                            continue
+                        await command_routing(msgtype, chat_id, text, sender_id, message_id)
+                else:
+                    print("[INFO] [UPDATES] next_offset_id is identical to l_offset. passing...")
+                    idle_count += 1
+                    if idle_count > 100:
+                        print("[INFO] [UPDATES] idle_count reached 100. entering lightsleep for 5 minutes...")
+                        print("[INFO] [UPDATES] feeding CPU WATCHDOG timer...")
+                        wdt.feed()
+                        lightsleep(300000)
+                        print("[INFO] [UPDATES] lightsleep finished.")
+                        print("[INFO] [UPDATES] reconnecting to WiFi again...")
+                        wlan.disconnect()
+                        connect_wifi()
                         idle_count = 0
-                        print("[INFO] [UPDATES] new offset_id detected.")
-                        print("[INFO] [UPDATES] updating offset_id...")
-                        updates = updates_data.get("updates", [])
-                        latest_offset = next_offset
-                        await update_offset(next_offset)
-                        for update in updates:
-                            msgtype = update.get("type")
-                            if msgtype == "NewMessage":
-                                new_msg = update.get("new_message", {})
-                                chat_id = update.get("chat_id")
-                                text = new_msg.get("text", "").strip()
-                                sender_id = new_msg.get("sender_id")
-                                message_id = new_msg.get("message_id")
-                            elif msgtype == "StartedBot":
-                                chat_id = update.get("chat_id")
-                                text = None
-                                sender_id = None
-                                message_id = None
-                            else:
-                                print("[INFO] [UPDATES] offset_id didn't, no new [supported] updates yet.")
-                                continue
-                            await command_routing(msgtype, chat_id, text, sender_id, message_id)
-                    else:
-                        print("[INFO] [UPDATES] next_offset_id is identical to l_offset. passing...")
-                        idle_count += 1
-                        if idle_count > 100:
-                            print("[INFO] [UPDATES] idle_count reached 100. entering lightsleep for 5 minutes...")
-                            print("[INFO] [UPDATES] feeding CPU WATCHDOG timer...")
-                            wdt.feed()
-                            lightsleep(300000)
-                            print("[INFO] [UPDATES] lightsleep finished.")
-                            print("[INFO] [UPDATES] reconnecting to WiFi again...")
-                            wlan.disconnect()
-                            connect_wifi()
-                            idle_count = 0
 
             LAST_FETCH = time.ticks_ms()
         except Exception as e:
@@ -255,13 +255,12 @@ async def send_text_message(chat_id: str, msg: str):
         }
         try:
             print(f"[INFO] [MESSAGE] Sending message to {chat_id}...")
-            async with aiohttp.ClientSession() as session:
-                async with session.request('POST', f"{URL}/sendMessage", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
-                    result = await response.json()
-                    if "data" in result or result.get("status") == "OK":
-                        print(f"[INFO] [MESSAGE] message sent to {chat_id}")
-                    else:
-                        print(f"[WARN] [MESSAGE] sending message to {chat_id} failed.")
+            async with session.request('POST', f"{URL}/sendMessage", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
+                result = await response.json()
+                if "data" in result or result.get("status") == "OK":
+                    print(f"[INFO] [MESSAGE] message sent to {chat_id}")
+                else:
+                    print(f"[WARN] [MESSAGE] sending message to {chat_id} failed.")
         except Exception as e:
             print(f"[ERROR] [MESSAGE] network failure")
             raise e
@@ -305,20 +304,20 @@ def block_user(chat_id: str):
             raise e
 
 async def send_images(chat_id, reply_message_id):
+    global session
     global LAST_PUSH
     if time.ticks_diff(time.ticks_ms(), LAST_PUSH) >= 5000:
         print(f"[INFO] [IMAGE] sending new capture to {chat_id}...")
         try:
-            async with aiohttp.ClientSession() as session:
-                upload_url = ""
-                async with session.request('POST', f"{URL}/requestSendFile", data=ujson.dumps({"type":"Image"}).encode("utf-8"), headers=HEADERS) as response:
-                    result = await response.json()
-                    if "data" in result or result.get("status") == "OK":
-                        data = result.get("data", result)
-                        upload_url = data.get("upload_url")
-                    else:
-                        print(f"[WARN] [IMAGE] POST request to FETCH upload_url failed. ERRORNO=0")
-                        await send_text_message(chat_id, "an error occured during capture upload operation.\n Please try again. ERRNO=0")
+            upload_url = ""
+            async with session.request('POST', f"{URL}/requestSendFile", data=ujson.dumps({"type":"Image"}).encode("utf-8"), headers=HEADERS) as response:
+                result = await response.json()
+                if "data" in result or result.get("status") == "OK":
+                    data = result.get("data", result)
+                    upload_url = data.get("upload_url")
+                else:
+                    print(f"[WARN] [IMAGE] POST request to FETCH upload_url failed. ERRORNO=0")
+                    await send_text_message(chat_id, "an error occured during capture upload operation.\n Please try again. ERRNO=0")
         except Exception as e:
             print(f"[ERROR] [IMAGE] network failure ERRNO=0: ")
             return
@@ -371,14 +370,13 @@ async def send_images(chat_id, reply_message_id):
         }
 
         try:
-            async with aiohttp.ClientSession() as session:
-                async with session.request('POST', URL+"/sendFile", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
-                    result = await response.json()
-                    if "data" in result or result.get("status") == "OK":
-                        LAST_PUSH = time.ticks_ms()
-                    else:
-                        print(f"[WARN] [IMAGE] POST request to send captured image to user failed. ERRORNO=2")
-                        await send_text_message(chat_id, "an error occured during capture upload operation.\n Please try again. ERRNO=2")
+            async with session.request('POST', URL+"/sendFile", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
+                result = await response.json()
+                if "data" in result or result.get("status") == "OK":
+                    LAST_PUSH = time.ticks_ms()
+                else:
+                    print(f"[WARN] [IMAGE] POST request to send captured image to user failed. ERRORNO=2")
+                    await send_text_message(chat_id, "an error occured during capture upload operation.\n Please try again. ERRNO=2")
         except Exception as e:
             print(f"[ERROR] [IMAGE] network failure ERRRNO=2: ")
             return
@@ -429,9 +427,11 @@ async def main():
             print(f"[INFO] [MAIN] free available memory: {gc.mem_free()}")
             if get_uptime() > 6:
                 print("[INFO] [MAIN] 6 days limit reached. hardresetting...")
+                await session.close()
                 reset()
         except Exception as e:
             print(f"[ERROR] [MAIN] Main loop error: {e}")
+            await session.close()
             reset()
 
 uasyncio.run(main())
