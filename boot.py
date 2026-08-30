@@ -1,14 +1,15 @@
 import ugit
 from machine import reset
+import random
 
 def run_ota():
     try:
         ugit.wificonnect()
-
-        if ugit.check_for_updates(isconnected=True):
+        dyn_branch = f"main?cb={random.randint(100_000, 999_999)}"
+        if ugit.check_for_updates(isconnected=True, branch=dyn_branch):
             print("[INFO] [OTA] New updates found. Downloading...")
             ugit.backup()
-            ugit.pull_all(isconnected=True)
+            ugit.pull_all(isconnected=True, branch=dyn_branch)
             print("[INFO] [OTA] Update complete. Rebooting...")
             reset()
         else:
