@@ -48,7 +48,7 @@ if not rtc_json["config"]:
             "ssid": "Py",
             "password": "11111111",
             "token": "***",
-            "l_offset": "6a91f6931e1b488427378f6e"
+            "l_offset": "6a9477a2cd5b2f405aa2455e"
         }
 if not rtc_json["auth"]:
     try:
@@ -277,7 +277,7 @@ async def get_info_str(chat_id: str):
     ssid = wlan.config('ssid')
     channel = wlan.config('channel')
     gmt_time = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
-    return f"--- --- ---\ntime(GMT):\n{gmt_time}\n--- DEVICE INFO ---\nFree ram: {gc.mem_free()} bytes\nAllocated ram {gc.mem_alloc()} bytes\nFree flash: {free_kb} KB\nTemperature: {esp32.mcu_temperature()} °C\n--- --- ---\nWi-Fi active: {wlan.active()}\nConnected: {wlan.isconnected()}\nIP: {wlan.ifconfig()[0]}\nSSID: {ssid}\nWiFi Channel: {channel}\nLink Status: {wlan.status()}\n--- --- ---"
+    return f"time(GMT):\n{gmt_time}\n--- DEVICE INFO ---\nFree ram: {gc.mem_free()} bytes\n\nAllocated ram: {gc.mem_alloc()} bytes\n\nFree flash: {free_kb} KB\nTemperature: {esp32.mcu_temperature()} °C\n--- --- ---\nWi-Fi active: {wlan.active()}\nConnected: {wlan.isconnected()}\nIP: {wlan.ifconfig()[0]}\nSSID: {ssid}\nWiFi Channel: {channel}\nLink Status: {wlan.status()}\n--- --- ---"
 
 def block_user(chat_id: str):
     global rtc_json
@@ -432,7 +432,7 @@ async def main():
         try:
             print("[INFO] [MAIN] feeding CPU WATCHDOG timer...")
             wdt.feed()
-            await get_updates(latest_offset, 10)
+            await get_updates(latest_offset, 50)
             print("[INFO] [MAIN] garbage collecting...")
             gc.collect()
             gc.collect()
