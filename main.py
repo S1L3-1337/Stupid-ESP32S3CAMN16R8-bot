@@ -46,7 +46,6 @@ if not rtc_json["config"]:
             "ssid": "Py",
             "password": "11111111",
             "token": "***",
-            "l_offset": "6a9477a2cd5b2f405aa2455e"
         }
 if not rtc_json["auth"]:
     try:
@@ -66,10 +65,11 @@ LAST_FETCH = time.ticks_ms()
 LAST_PUSH = time.ticks_ms()
 idle_count = 1
 HEADERS = {'Content-Type': 'application/json'}
-latest_offset: str = config.get("l_offset", "")
 _BOOT_TICK = time.ticks_ms()
 wlan = network.WLAN(network.STA_IF)
 session = aiohttp.ClientSession()
+base_offset = "6a94b3b0577044b7a9bba2ab"
+latest_offset: str = ""
 
 cam = Camera(
     data_pins=[11, 9, 8, 10, 12, 18, 17, 16],
@@ -106,6 +106,32 @@ def get_uptime(unit: str = 'D'):
         print("[ERROR] [UPTIME] unknown unit.")
         raise ValueError
 
+async def find_last_offset(base_offset: str):
+    global latest_offset
+    GETUPDATES_URL = "/getUpdates".join(URL)
+    PAYLOAD = ujson.dumps({"offset_id": base_offset}).encode('utf-8')
+    while True:
+        try:
+            async with session.post(
+                url=GETUPDATES_URL,
+                data=PAYLOAD,
+                headers=HEADERS
+            ) as response:
+                result = await response.json()
+                if "data" in result or result.get("status") == "OK":
+                    data = result.get("data", result)
+                    if (not ("next_offset_id" in data)) or (not data.get("updates", [])):
+                        latest_offset = base_offset
+                    else:
+                        base_offset = data.get("next_offset_id")
+                        continue
+                else:
+                    print("[ERROR] [FIND_OFFSET] an error happened during POST request to fetch offset.")
+                    raise Exception("None offset_id exception")
+        except Exception as e:
+            print("[ERROR] [FIND_OFFSET] an error happened during find_last_offset operation.")
+            raise e
+
 def capture_image():
     frame = cam.capture()
     if frame:
@@ -138,22 +164,11 @@ def connect_wifi():
 
 async def update_offset(offset_id: str):
     global rtc_json
-    if get_uptime('H') > 12:
-        print("[INFO] [OFFSET] 12h uptime limit reached.")
-        config["l_offset"] = offset_id
-        try:
-            with open("config.json.temp", mode='w') as f:
-                ujson.dump(config, f)
-            os.rename("config.json.temp", "config.json")
-            os.sync()
-        except OSError as e:
-            print("[WARN] [OFFSET] an error occured during write operation on config.json")
-    else:
-        try:
-            rtc_json['config']['l_offset'] = offset_id
-            RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
-        except Exception as e:
-            print("[ERROR] [OFFSET] an error occured during write operation on RTC memory.")
+    try:
+        rtc_json['config']['l_offset'] = offset_id
+        RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
+    except Exception as e:
+        print("[ERROR] [OFFSET] an error occured during write operation on RTC memory.")
 
 async def get_updates(offset_id: str, lim: int = 10):
     global idle_count
@@ -257,8 +272,8 @@ def block_user(chat_id: str):
     if "blocked_chats" not in AUTH_USERS:
         AUTH_USERS["blocked_chats"] = []
     AUTH_USERS["blocked_chats"].append(chat_id)
-    if get_uptime('H') > 12:
-        print("[INFO] [BLOCK] 12h uptime limit reached.")
+    if get_uptime('H') > 6:
+        print("[INFO] [BLOCK] 6h uptime limit reached.")
         try:
             with open("authorized.json.temp", mode='w') as f:
                 ujson.dump(AUTH_USERS, f)
