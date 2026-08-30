@@ -7,7 +7,8 @@ def run_ota():
 
         if ugit.check_for_updates(isconnected=True):
             print("[INFO] [OTA] New updates found. Downloading...")
-            ugit.safe_pull_all(isconnected=True)
+            ugit.backup()
+            ugit.pull_all(isconnected=True)
             print("[INFO] [OTA] Update complete. Rebooting...")
             reset()
         else:
