@@ -67,7 +67,7 @@ TOKEN = config.get("token")
 URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 LAST_FETCH = time.ticks_ms()
 LAST_PUSH = time.ticks_ms()
-idle_count = 0
+idle_count = 1
 HEADERS = {'Content-Type': 'application/json'}
 latest_offset: str = config.get("l_offset", "")
 _BOOT_TICK = time.ticks_ms()
@@ -104,13 +104,13 @@ def get_uptime(unit: str = 'D'):
     print("[INFO] [UPTIME] calculating uptime...")
     uptime_ms = time.ticks_diff(time.ticks_ms(), _BOOT_TICK)
     if unit == 'D':
-            return uptime_ms / 86_400_000
+        return uptime_ms / 86_400_000
     elif unit == 'H':
-            return uptime_ms / 3_600_000
+        return uptime_ms / 3_600_000
     else:
-            print("[ERROR] [UPTIME] unknown unit.")
-            print("[ERROR] [UPTIME] unrecoverable for now... panic!")
-            raise ValueError
+        print("[ERROR] [UPTIME] unknown unit.")
+        print("[ERROR] [UPTIME] unrecoverable for now... panic!")
+        raise ValueError
 
 def capture_image():
     print("[INFO] [CAM] capturing new image...")
@@ -179,7 +179,7 @@ async def get_updates(offset_id: str, lim: int = 10):
             "limit": lim,
         }
         try:
-            print(f"[INFO] [UPDATES] polling new updates... [idle_count: {idle_count}/10]")
+            print(f"[INFO] [UPDATES] polling new updates... [idle_count: {idle_count}/100]")
             async with aiohttp.ClientSession() as session:
                 async with session.request('POST', f"{URL}/getUpdates", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
                     data = await response.json()
@@ -212,11 +212,11 @@ async def get_updates(offset_id: str, lim: int = 10):
                     else:
                         print("[INFO] [UPDATES] next_offset_id is identical to l_offset. passing...")
                         idle_count += 1
-                        if idle_count > 10:
-                            print("[INFO] [UPDATES] idle_count reached 10. entering lightsleep for 2.5 minutes...")
+                        if idle_count > 100:
+                            print("[INFO] [UPDATES] idle_count reached 100. entering lightsleep for 5 minutes...")
                             print("[INFO] [UPDATES] feeding CPU WATCHDOG timer...")
                             wdt.feed()
-                            lightsleep(150000)
+                            lightsleep(300000)
                             print("[INFO] [UPDATES] lightsleep finished.")
                             print("[INFO] [UPDATES] reconnecting to WiFi again...")
                             wlan.disconnect()
@@ -438,8 +438,8 @@ async def main():
             gc.collect()
             await uasyncio.sleep(5)
             print(f"[INFO] [MAIN] free available memory: {gc.mem_free()}")
-            if get_uptime() > 7:
-                print("[INFO] [MAIN] 7 days limit reached. hardresetting...")
+            if get_uptime() > 6:
+                print("[INFO] [MAIN] 6 days limit reached. hardresetting...")
                 reset()
         except Exception as e:
             print(f"[ERROR] [MAIN] Main loop error: {e}")
