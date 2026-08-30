@@ -109,7 +109,6 @@ def get_uptime(unit: str = 'D'):
         return uptime_ms / 3_600_000
     else:
         print("[ERROR] [UPTIME] unknown unit.")
-        print("[ERROR] [UPTIME] unrecoverable for now... panic!")
         raise ValueError
 
 def capture_image():
@@ -129,7 +128,6 @@ def capture_image():
         )
     else:
         print("[ERROR] [CAM] capture failed...")
-        print("[ERROR] [CAM] unrecoverable error for now. returning...")
         return None
 
 def connect_wifi():
@@ -266,7 +264,6 @@ async def send_text_message(chat_id: str, msg: str):
                         print(f"[WARN] [MESSAGE] sending message to {chat_id} failed.")
         except Exception as e:
             print(f"[ERROR] [MESSAGE] network failure")
-            print("[ERROR] [MESSAGE] unrecoverable for now, Panic!")
             raise e
 
 async def get_info_str(chat_id: str):
@@ -296,7 +293,6 @@ def block_user(chat_id: str):
             print("[INFO] [BLOCK] User blocked and saved successfully.")
         except OSError as e:
             print(f"[ERROR] [BLOCK] Failed to write authorized.json: {e}")
-            print("[ERROR] [BLOCK] unrecoverable for now... panic!")
             raise e
     else:
         print("[INFO] [BLOCK] device uptime is less than 12 hours.")
@@ -306,7 +302,6 @@ def block_user(chat_id: str):
             RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
         except Exception as e:
             print(f"[ERROR] [BLOCK] Failed to write new data to RTC memory.: {e}")
-            print("[ERROR] [BLOCK] unrecoverable for now... panic!")
             raise e
 
 async def send_images(chat_id, reply_message_id):
@@ -326,7 +321,6 @@ async def send_images(chat_id, reply_message_id):
                         await send_text_message(chat_id, "an error occured during capture upload operation.\n Please try again. ERRNO=0")
         except Exception as e:
             print(f"[ERROR] [IMAGE] network failure ERRNO=0: ")
-            print("[ERROR] [IMAGE] operation unrecoverable. returning...")
             return
 
         if not upload_url:
@@ -337,7 +331,6 @@ async def send_images(chat_id, reply_message_id):
         capture_data = capture_image()
         if not capture_data:
             await send_text_message(chat_id, "Camera capture failed. Please try again. ERRNO=5")
-            print("[INFO] [IMAGE] operation unrecoverable. returning...")
             return
 
         try:
@@ -356,20 +349,17 @@ async def send_images(chat_id, reply_message_id):
                 print(f"[INFO] [IMAGE] Multipart upload successful! file_id: {file_id}")
             else:
                 print(f"[WARN] [IMAGE] Both upload methods failed. Server replied: {result}\n ERRNO=1")
-                print("[WARN] [IMAGE] operation unrecoverable. returning...")
                 await send_text_message(chat_id, "Upload failed. ERRNO=1")
                 return
             response.close()
 
         except Exception as e:
             print(f"[ERROR] [IMAGE] Upload failed: {e}")
-            print(f"[ERROR] [IMAGE] operation unrecoverable. returning...")
             await send_text_message(chat_id, "Network error during upload. ERRNO=1")
             return
 
         if not file_id:
             print("[WARN] [IMAGE] file_id is Empty. ERRNO=4")
-            print("[WARN] [IMAGE] operation unrecoverable. returning...")
             await send_text_message(chat_id, "POST request to upload file failed. please try again.")
             return
 
@@ -391,7 +381,6 @@ async def send_images(chat_id, reply_message_id):
                         await send_text_message(chat_id, "an error occured during capture upload operation.\n Please try again. ERRNO=2")
         except Exception as e:
             print(f"[ERROR] [IMAGE] network failure ERRRNO=2: ")
-            print("[ERROR] [IMAGE] operation unrecoverable. returning...")
             return
 
         del capture_data
@@ -443,7 +432,6 @@ async def main():
                 reset()
         except Exception as e:
             print(f"[ERROR] [MAIN] Main loop error: {e}")
-            print("[ERROR] unrecoverable error... hardresetting...")
             reset()
 
 uasyncio.run(main())
