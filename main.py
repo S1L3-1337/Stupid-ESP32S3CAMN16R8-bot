@@ -424,7 +424,7 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
 
 async def main():
     global latest_offset
-    print("[INFO] [MAIN] starting program...")
+    print("[INITIAL] [MAIN] starting program...")
     connect_wifi()
 
     print("[INFO] [MAIN] Bot is running. Listening for commands...")
