@@ -68,7 +68,7 @@ HEADERS = {'Content-Type': 'application/json'}
 _BOOT_TICK = time.ticks_ms()
 wlan = network.WLAN(network.STA_IF)
 session = aiohttp.ClientSession()
-base_offset = "6a94b3b0577044b7a9bba2ab"
+BASE_OFFSET = "6a94b3b0577044b7a9bba2ab"
 latest_offset: str = ""
 
 cam = Camera(
@@ -107,10 +107,13 @@ def get_uptime(unit: str = 'D'):
         raise ValueError
 
 async def find_last_offset(base_offset: str):
+    print("[DEBUG] trying to find latest offset...")
     global latest_offset
+    depth = 0
     GETUPDATES_URL = "/getUpdates".join(URL)
     PAYLOAD = ujson.dumps({"offset_id": base_offset}).encode('utf-8')
     while True:
+        print(f"[DEBUG] checking depth={depth}")
         try:
             async with session.post(
                 url=GETUPDATES_URL,
@@ -122,6 +125,8 @@ async def find_last_offset(base_offset: str):
                     data = result.get("data", result)
                     if (not ("next_offset_id" in data)) or (not data.get("updates", [])):
                         latest_offset = base_offset
+                        print(f"[DEBUG] latest_offset FOUND in depth={depth}. breaking...")
+                        break
                     else:
                         base_offset = data.get("next_offset_id")
                         continue
@@ -393,7 +398,7 @@ async def main():
     global latest_offset
     print("[INITIAL] [MAIN] starting program...")
     connect_wifi()
-
+    await find_last_offset(BASE_OFFSET)
     while True:
         try:
             wdt.feed()
