@@ -6,25 +6,27 @@ from camera import Camera, PixelFormat, FrameSize, GrabMode
 import jpeg
 import os
 import gc
-from machine import WDT
+from machine import WDT, idle
 import aiohttp
 import urequests
-from machine import RTC, reset, lightsleep
+from machine import RTC, reset, lightsleep, reset_cause
 import esp32
 
 print(f"[INFO] initial free available memory: {gc.mem_free()}")
-print("[INFO] reading from RTC memory...")
+print(f"[INFO] latest reset caused by: {reset_cause()}")
 
+print("[INFO] reading from RTC memory...")
 rtc_json = {"config": {}, "auth": {}}
 if rtc_content := RTC().memory():
     try:
-        print("[INFO] RTC memory valid. Loading config...")
+        print("[INFO] RTC memory valid. Loading config from RTC...")
         loaded_data = ujson.loads(rtc_content)
         rtc_json["config"] = loaded_data.get("config", {})
         rtc_json["auth"] = loaded_data.get("auth", {})
     except ValueError:
         print("[WARN] RTC memory corrupted. Falling back to files.")
-
+else:
+    print("[WARN] RTC memory invalid. Loading config from file...")
 if not rtc_json["config"]:
     try:
         print("[INFO] reading config.json's content...")
@@ -36,7 +38,7 @@ if not rtc_json["config"]:
             "ssid": "Py",
             "password": "11111111",
             "token": "***",
-            "l_offset": "6a91d015a7019529a704ac19"
+            "l_offset": "6a91f6931e1b488427378f6e"
         }
 if not rtc_json["auth"]:
     try:
@@ -118,6 +120,9 @@ def connect_wifi():
     if not wlan.isconnected():
         print("[INFO] connecting", end="")
         wlan.connect(SSID, PASSWORD)
+    else:
+        wlan.disconnect()
+        wlan.connect()
     while not wlan.isconnected():
         time.sleep_ms(500)
         print(".", end="")
@@ -125,7 +130,7 @@ def connect_wifi():
 
 async def update_offset(offset_id: str):
     global rtc_json
-    if get_uptime_days() > 7:
+    if get_uptime_days() > 3:
         print("updating config.json with new offset_id...")
         config["l_offset"] = offset_id
         try:
@@ -154,7 +159,7 @@ async def get_updates(offset_id: str, lim: int = 10):
             "limit": lim,
         }
         try:
-            print("[INFO] polling new updates...")
+            print(f"[INFO] polling new updates... [idle_count: {idle_count}/10]")
             async with aiohttp.ClientSession() as session:
                 async with session.request('POST', f"{URL}/getUpdates", data=ujson.dumps(payload).encode("utf-8"), headers=HEADERS) as response:
                     data = await response.json()
@@ -185,10 +190,16 @@ async def get_updates(offset_id: str, lim: int = 10):
                                 continue
                             await command_routing(msgtype, chat_id, text, sender_id, message_id)
                     else:
+                        print("[INFO] next_offset_id is identical to l_offset. passing...")
                         idle_count += 1
                         if idle_count > 10:
+                            print("[INFO] idle_count reached 10. entering lightsleep for 2.5 minutes...")
+                            print("[INFO] feeding CPU WATCHDOG timer...")
                             wdt.feed()
                             lightsleep(150000)
+                            print("[INFO] lightsleep finished.")
+                            print("[INFO] reconnecting to WiFi again...")
+                            wlan.disconnect()
                             connect_wifi()
                             idle_count = 0
 
@@ -234,7 +245,7 @@ async def send_text_message(chat_id: str, msg: str):
                     else:
                         print(f"[FAIL] sending message to {chat_id} failed.")
         except Exception as e:
-            print(f"[ERROR] network failure: ")
+            print(f"[ERROR] network failure")
             print("unrecoverable for now, Panic!")
             raise e
 
@@ -245,7 +256,7 @@ async def get_info_str(chat_id: str):
     ssid = wlan.config('ssid')
     channel = wlan.config('channel')
     gmt_time = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
-    return f"--- --- ---\ntime(GMT):\n{gmt_time}\n--- DEVICE INFO ---\nFree ram: {gc.mem_free()} bytes\nAllocated ram {gc.mem_alloc()} bytes\nFree flash: {free_kb}KB\nTemperature: {(esp32.raw_temperature() - 32) * 5/9} °C\n--- --- ---\nWi-Fi active: {wlan.active()}\nConnected: {wlan.isconnected()}\nIP: {wlan.ifconfig()[0]}\nSSID {ssid}\nWiFi Channel: {channel}\nLink Status: {wlan.status()}\n--- --- ---"
+    return f"--- --- ---\ntime(GMT):\n{gmt_time}\n--- DEVICE INFO ---\nFree ram: {gc.mem_free()} bytes\nAllocated ram {gc.mem_alloc()} bytes\nFree flash: {free_kb} KB\nTemperature: {esp32.mcu_temperature()} °C\n--- --- ---\nWi-Fi active: {wlan.active()}\nConnected: {wlan.isconnected()}\nIP: {wlan.ifconfig()[0]}\nSSID: {ssid}\nWiFi Channel: {channel}\nLink Status: {wlan.status()}\n--- --- ---"
 
 def block_user(chat_id: str):
     global rtc_json
@@ -253,7 +264,7 @@ def block_user(chat_id: str):
     if "blocked_chats" not in AUTH_USERS:
         AUTH_USERS["blocked_chats"] = []
     AUTH_USERS["blocked_chats"].append(chat_id)
-    if get_uptime_days() > 7:
+    if get_uptime_days() > 3:
         print("[INFO] adding new blocked user to authorized.json...")
         try:
             with open("authorized.json.temp", mode='w') as f:
@@ -392,16 +403,20 @@ async def main():
     print("[INFO] Bot is running. Listening for commands...")
     while True:
         try:
+            print("[INFO] feeding CPU WATCHDOG timer...")
             wdt.feed()
             await get_updates(latest_offset, 10)
+            print("[INFO] garbage collecting...")
             gc.collect()
             gc.collect()
             await uasyncio.sleep(5)
             print(f"[INFO] free available memory: {gc.mem_free()}")
             if get_uptime_days() > 7:
+                print("[INFO] 7 days limit reached. hardresetting...")
                 reset()
         except Exception as e:
             print(f"[CRITICAL] Main loop error: {e}")
+            print("[ERROR] unrecoverable error... hardresetting...")
             reset()
 
 uasyncio.run(main())
