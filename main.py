@@ -240,8 +240,12 @@ async def send_text_message(chat_id: str, msg: str):
 
 async def get_info_str(chat_id: str):
     now = time.gmtime()
+    vfs = os.statvfs("/")
+    free_kb = (vfs[0] * vfs[3]) // 1024
+    ssid = wlan.config('ssid')
+    channel = wlan.config('channel')
     gmt_time = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
-    return f"--- --- ---\ntime(GMT):\n{gmt_time}\n--- --- ---\nfree-available-mem: {gc.mem_free()} bytes\nallocated_memory {gc.mem_alloc()} bytes\nfilesystem space: {os.statvfs("/")}\n--- --- ---\ntemp: {esp32.raw_temperature()} ^C\n--- --- ---\nWi-Fi interface: {wlan.active()}\nis-connected: {wlan.isconnected()}\nip-level parameters: {wlan.ifconfig()}\ngeneral parameters: {wlan.config()}\nlink-status: {wlan.status()}\n--- --- ---"
+    return f"--- --- ---\ntime(GMT):\n{gmt_time}\n--- DEVICE INFO ---\nFree ram: {gc.mem_free()} bytes\nAllocated ram {gc.mem_alloc()} bytes\nFree flash: {free_kb}KB\nTemperature: {(esp32.raw_temperature() - 32) * 5/9} °C\n--- --- ---\nWi-Fi active: {wlan.active()}\nConnected: {wlan.isconnected()}\nIP: {wlan.ifconfig()[0]}\nSSID {ssid}\nWiFi Channel: {channel}\nLink Status: {wlan.status()}\n--- --- ---"
 
 def block_user(chat_id: str):
     global rtc_json
