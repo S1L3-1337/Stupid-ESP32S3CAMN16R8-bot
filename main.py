@@ -426,6 +426,7 @@ async def main():
     global latest_offset
     print("[INITIAL] [MAIN] starting program...")
     print("[RATATATATATAAAAAAAAAAAAAAATTAATATATA]")
+    print("[ROTOTATA]")
     connect_wifi()
 
     print("[INFO] [MAIN] Bot is running. Listening for commands...")
