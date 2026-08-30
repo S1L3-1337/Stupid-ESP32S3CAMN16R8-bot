@@ -1,5 +1,5 @@
 import ugit
-from machine import soft_reset
+from machine import reset
 
 def run_ota():
     try:
@@ -9,7 +9,7 @@ def run_ota():
             print("[INFO] [OTA] New updates found. Downloading...")
             ugit.safe_pull_all(isconnected=True)
             print("[INFO] [OTA] Update complete. Rebooting...")
-            soft_reset()
+            reset()
         else:
             print("[INFO] [OTA] System is up to date.")
 
@@ -19,6 +19,7 @@ def run_ota():
         try:
             ugit.restore()
             print("[INFO] [OTA] Backup restored successfully. Rebooting...")
-            soft_reset()
+            reset()
         except Exception as rollback_error:
             print(f"[ERROR] [OTA] Rollback failed: {rollback_error}")
+run_ota()
