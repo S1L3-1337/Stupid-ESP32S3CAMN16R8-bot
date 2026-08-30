@@ -9,32 +9,56 @@ import gc
 from machine import WDT
 import aiohttp
 import urequests
+from machine import RTC, reset, lightsleep
 
-print(f"initial free available memory: {gc.mem_free()}")
+print(f"[INFO] initial free available memory: {gc.mem_free()}")
+print("[INFO] reading from RTC memory...")
 
+rtc_json = {"config": {}, "auth": {}}
+if rtc_content := RTC().memory():
+    try:
+        print("[INFO] RTC memory valid. Loading config...")
+        loaded_data = ujson.loads(rtc_content)
+        rtc_json["config"] = loaded_data.get("config", {})
+        rtc_json["auth"] = loaded_data.get("auth", {})
+    except ValueError:
+        print("[WARN] RTC memory corrupted. Falling back to files.")
 
-try:
-    print("reading config.json's content...")
-    with open("config.json") as f:
-        config = ujson.load(f)
-except OSError as e:
-    print("an error occured during read operation on config.json:", e)
-    print("fallback to default value for config.json")
-    config = {
-        "ssid": "Py",
-        "password": "11111111",
-        "token": "***",
-        "l_offset": "6a91d015a7019529a704ac19"
-    }
+if not rtc_json["config"]:
+    try:
+        print("[INFO] reading config.json's content...")
+        with open("config.json") as f:
+            rtc_json["config"] = ujson.load(f)
+    except OSError as e:
+        print("[WARN] config.json read error:", e)
+        rtc_json["config"] = {
+            "ssid": "Py",
+            "password": "11111111",
+            "token": "***",
+            "l_offset": "6a91d015a7019529a704ac19"
+        }
 
+if not rtc_json["auth"]:
+    try:
+        print("[INFO] reading authorized.json's content...")
+        with open("authorized.json", mode='r') as f:
+            rtc_json["auth"] = ujson.load(f)
+    except OSError as e:
+        print("[ERROR] authorized.json missing or corrupted. Panic!")
+        raise e
+
+config = rtc_json["config"]
+AUTH_USERS = rtc_json["auth"]
 SSID = config.get("ssid")
 PASSWORD = config.get("password")
 TOKEN = config.get("token")
 URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 LAST_FETCH = time.ticks_ms()
 LAST_PUSH = time.ticks_ms()
+idle_count = 0
 HEADERS = {'Content-Type': 'application/json'}
 latest_offset: str = config.get("l_offset", "")
+_BOOT_TICK = time.ticks_ms()
 
 print("Initializing Camera...")
 cam = Camera(
@@ -61,16 +85,11 @@ enc = jpeg.Encoder(
     rotation=0
 )
 
-wdt = WDT(timeout=80000)  # watchdog timer 80 seconds timeout
+wdt = WDT(timeout=80000)
 
-try:
-    print("reading authorized.json's content...")
-    with open("authorized.json", mode='r') as f:
-        AUTH_USERS = ujson.load(f)
-except OSError as e:
-    print("error occured during read operation on authorized.json")
-    print("unrecoverable for now, Panic!")
-    raise e
+def get_uptime_days():
+    print("[INFO] calculating uptime...")
+    return time.ticks_diff(time.ticks_ms(), _BOOT_TICK) / 86_400_000
 
 def capture_image():
 
@@ -78,45 +97,55 @@ def capture_image():
     frame = cam.capture()
     if frame:
         rgb565_bytes = bytes(frame)
-        print(f"Captured {len(rgb565_bytes)} bytes of raw RGB565")
-        print("Encoding to JPEG and saving to file: image.jpg")
-        with open("image.jpg", mode="wb") as f:
-            f.write(enc.encode(rgb565_bytes))
-        file_size = os.stat("image.jpg")[6]
-        print(f"Saved to \"image.jpg\" ({file_size} bytes)")
-        print("cleaning the buffer...")
+        print(f"[INFO] Captured {len(rgb565_bytes)} bytes of raw RGB565")
+        print("[INFO] Encoding image from RGB565 to jpeg format.")
+        jpeg = enc.encode(rgb565_bytes)
+        print(f"[INFO] file encoded Successfully! image size: {len(jpeg)} bytes")
+        print("[INFO] cleaning the buffer...")
         cam.free_buffer()
-        now = time.localtime()
-        return "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
+        now = time.gmtime()
+        return jpeg, "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
             now[0], now[1], now[2], now[3], now[4], now[5]
         )
     else:
-        print("capture failed...")
+        print("[ERROR] capture failed...")
         return None
 
 def connect_wifi():
     wlan = network.WLAN(network.STA_IF)
     wlan.active(True)
     if not wlan.isconnected():
-        print("connecting", end="")
+        print("[INFO] connecting", end="")
         wlan.connect(SSID, PASSWORD)
     while not wlan.isconnected():
         time.sleep_ms(500)
         print(".", end="")
-    print("Connected! Connection config: ", wlan.ifconfig())
+    print("[INFO] Connected! Connection config: ", wlan.ifconfig())
 
 async def update_offset(offset_id: str):
-    print("updating config.json with new offset_id...")
-    config["l_offset"] = offset_id
-    try:
-        print("writing the new offset_id...")
-        with open("config.json.temp", mode='w') as f:
-            ujson.dump(config, f)
-        os.rename("config.json.temp", "config.json") # atomicity
-    except OSError as e:
-        print("an error occured during write operation on config.json")
+    global rtc_json
+    if get_uptime_days() > 7:
+        print("updating config.json with new offset_id...")
+        config["l_offset"] = offset_id
+        try:
+            print("writing the new offset_id...")
+            with open("config.json.temp", mode='w') as f:
+                ujson.dump(config, f)
+            os.rename("config.json.temp", "config.json")
+            os.sync()
+        except OSError as e:
+            print("an error occured during write operation on config.json")
+    else:
+        try:
+            print("[INFO] updating RTC memory with new offset_id...")
+            rtc_json['config']['l_offset'] = offset_id
+            RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
+        except Exception as e:
+            print("[ERROR] an error occured during write operation on RTC memory.")
+
 
 async def get_updates(offset_id: str, lim: int = 10):
+    global idle_count
     global latest_offset
     global LAST_FETCH
     if time.ticks_diff(time.ticks_ms(), LAST_FETCH) >= 5000:
@@ -132,8 +161,9 @@ async def get_updates(offset_id: str, lim: int = 10):
                     updates_data = data.get("data", data)
                     next_offset = updates_data.get("next_offset_id", offset_id)
                     if next_offset != offset_id:
-                        print("new offset_id detected.")
-                        print("updating offset_id...")
+                        idle_count = 0
+                        print("[INFO] new offset_id detected.")
+                        print("[INFO] updating offset_id...")
                         updates = updates_data.get("updates", [])
                         latest_offset = next_offset
                         await update_offset(next_offset)
@@ -155,7 +185,13 @@ async def get_updates(offset_id: str, lim: int = 10):
                                 continue
                             await command_routing(msgtype, chat_id, text, sender_id, message_id)
                     else:
-                        pass # no new update/message.
+                        idle_count += 1
+                        if idle_count > 10:
+                            wdt.feed()
+                            lightsleep(150000)
+                            connect_wifi()
+                            idle_count = 0
+
             LAST_FETCH = time.ticks_ms()
         except Exception as e:
             print(f"[ERROR] polling failed: {e}")
@@ -165,8 +201,8 @@ async def get_updates(offset_id: str, lim: int = 10):
 async def command_routing(msgtype: str, chat_id: str, text: str|None, sender_id: str|None, message_id: str|None):
     print("[MESSAGE]: new message received.")
     if msgtype == "StartedBot" and not (text or sender_id) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
-        print(f"[COMMAND] new /start received in {chat_id}") # lets restrict the bot to already authorized users. and ignore blocked fellas
-        print(chat_id, "UNAUTHORIZED ACCESS.\n BLOCKING USER.../!") # ignore it
+        print(f"[COMMAND] new /start received in {chat_id}")
+        print(chat_id, "UNAUTHORIZED ACCESS.\n BLOCKING USER.../!")
         block_user(str(chat_id))
     elif msgtype == "NewMessage" and text == "/start" and str(sender_id) in AUTH_USERS.get("user_id", []) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
         print(f"[COMMAND] /start received from {sender_id} in {chat_id}")
@@ -175,7 +211,7 @@ async def command_routing(msgtype: str, chat_id: str, text: str|None, sender_id:
     elif text == "/capture" and str(sender_id) in AUTH_USERS.get("user_id", []) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
          await send_images(chat_id, message_id)
     elif msgtype == "NewMessage" and (str(sender_id) not in AUTH_USERS.get("user_id", []) or str(chat_id) in AUTH_USERS.get("blocked_chats", [])):
-        print(f"[MESSAGE] message received from an unauthorized user: {sender_id} in {chat_id}") # ignore it.
+        print(f"[MESSAGE] message received from an unauthorized user: {sender_id} in {chat_id}")
     else:
         await send_text_message(chat_id, "unknown command!\n use /capture to capture new photos.")
 
@@ -200,17 +236,32 @@ async def send_text_message(chat_id: str, msg: str):
             raise e
 
 def block_user(chat_id: str):
-    print(f"blocking {chat_id}")
+    global rtc_json
+    print(f"[INFO] blocking {chat_id}")
     if "blocked_chats" not in AUTH_USERS:
         AUTH_USERS["blocked_chats"] = []
     AUTH_USERS["blocked_chats"].append(chat_id)
-    try:
-        with open("authorized.json.temp", mode='w') as f:
-            ujson.dump(AUTH_USERS, f)
-        os.rename("authorized.json.temp", "authorized.json") # atomicity
-        print("User blocked and saved successfully.")
-    except OSError as e:
-        print(f"[ERROR] Failed to write authorized.json: {e}")
+    if get_uptime_days() > 7:
+        print("[INFO] adding new blocked user to authorized.json...")
+        try:
+            with open("authorized.json.temp", mode='w') as f:
+                ujson.dump(AUTH_USERS, f)
+            os.rename("authorized.json.temp", "authorized.json")
+            os.sync()
+            print("[INFO] User blocked and saved successfully.")
+        except OSError as e:
+            print(f"[ERROR] Failed to write authorized.json: {e}")
+            print("[ERROR] unrecoverable for now... panic!")
+            raise e
+    else:
+        try:
+            print("[INFO] adding new blocked user to RTC memory...")
+            rtc_json['auth'] = AUTH_USERS
+            RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
+        except Exception as e:
+            print(f"[ERROR] Failed to write new data to RTC memory.: {e}")
+            print("[ERROR] unrecoverable for now... panic!")
+            raise e
 
 async def send_images(chat_id, reply_message_id):
     global LAST_PUSH
@@ -221,7 +272,6 @@ async def send_images(chat_id, reply_message_id):
                 upload_url = ""
                 async with session.request('POST', f"{URL}/requestSendFile", data=ujson.dumps({"type":"Image"}).encode("utf-8"), headers=HEADERS) as response:
                     result = await response.json()
-                    print(f"returned ERRNO=0 Position: \n{result}")
                     if "data" in result or result.get("status") == "OK":
                         data = result.get("data", result)
                         upload_url = data.get("upload_url")
@@ -230,7 +280,7 @@ async def send_images(chat_id, reply_message_id):
                         await send_text_message(chat_id, "an error occured during capture upload operation.\n Please try again. ERRNO=0")
         except Exception as e:
             print(f"[ERROR] network failure ERRNO=0: ")
-            print("operation unrecoverable. returning...")
+            print("[ERROR] operation unrecoverable. returning...")
             return
 
         if not upload_url:
@@ -238,24 +288,17 @@ async def send_images(chat_id, reply_message_id):
             await send_text_message(chat_id, "POST request to server failed. please try again.")
             return
 
-        capture_detail = capture_image()
-        if not capture_detail:
+        capture_data = capture_image()
+        if not capture_data:
             await send_text_message(chat_id, "Camera capture failed. Please try again. ERRNO=5")
             return
 
         try:
-            print("uploading jpeg file...")
+            print("[INFO] uploading jpeg file...")
             file_id = None
-            try:
-                print("reading image.jpg into bytes...")
-                with open("image.jpg", "rb") as file_handle:
-                    fdata = handle_encoding(file_handle)
-            except OSError as e:
-                print("an error occured during binary read operation on image.jpg")
-                return
-
+            print("[INFO] encoding image...")
+            fdata = handle_encoding(capture_data[0])
             response = urequests.post(upload_url, data=fdata[0], headers=fdata[1])
-
             try:
                 result = response.json()
             except Exception:
@@ -283,7 +326,7 @@ async def send_images(chat_id, reply_message_id):
         payload = {
             "chat_id": chat_id,
             "file_id": file_id,
-            "text": f"captured at: {capture_detail}",
+            "text": f"captured at: {capture_data[1]}",
             "reply_to_message_id": reply_message_id,
         }
 
@@ -298,25 +341,19 @@ async def send_images(chat_id, reply_message_id):
                         await send_text_message(chat_id, "an error occured during capture upload operation.\n Please try again. ERRNO=2")
         except Exception as e:
             print(f"[ERROR] network failure ERRRNO=2: ")
-            print("operation unrecoverable. returning...")
+            print("[INFO] operation unrecoverable. returning...")
             return
 
-        try:
-            if "image.jpg" in os.listdir():
-                os.remove("image.jpg")
-                print("[CLEANUP] Removed image.jpg from flash storage.")
-        except OSError as e:
-                print(f"[WARN] Failed to remove image.jpg: {e}")
+        del capture_data
+        print("[CLEANUP] Removed image.jpg from ram.")
 
     else:
         print("[ERROR] capture ratelimit exhausted. wait for 5s to finish.")
         await send_text_message(chat_id, "capture ratelimit exhausted. wait 5s before requesting another capture.")
 
-def handle_encoding(file_handler): # --- BEGINNING OF AI-ASSISTED PART ---
-    print("encoding POST request...")
+def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
+    print("[INFO] encoding POST request...")
     boundary = "MicroPythonUploadBoundary123"
-
-    image_bytes = file_handler.read()
 
     header = (
         f"--{boundary}\r\n"
@@ -337,18 +374,22 @@ def handle_encoding(file_handler): # --- BEGINNING OF AI-ASSISTED PART ---
 
 async def main():
     global latest_offset
-    print("starting program...")
+    print("[INFO] starting program...")
     connect_wifi()
 
-    print("Bot is running. Listening for commands...")
+    print("[INFO] Bot is running. Listening for commands...")
     while True:
         try:
             wdt.feed()
             await get_updates(latest_offset, 10)
             gc.collect()
+            gc.collect()
             await uasyncio.sleep(5)
-            print(f"free available memory: {gc.mem_free()}")
+            print(f"[INFO] free available memory: {gc.mem_free()}")
+            if get_uptime_days() > 7:
+                reset()
         except Exception as e:
             print(f"[CRITICAL] Main loop error: {e}")
+            reset()
 
 uasyncio.run(main())
