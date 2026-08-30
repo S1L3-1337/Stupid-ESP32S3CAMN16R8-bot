@@ -29,6 +29,7 @@ import binascii
 import machine
 import time
 import network
+import random
 
 _GITHUB_API = 'https://api.github.com/repos'
 _GITHUB_RAW = 'https://raw.githubusercontent.com'
@@ -291,7 +292,8 @@ def wificonnect(ssid=None, password=None):
 
 def pull_git_tree(user, repository, branch='main', token=''):
     """Fetch the full recursive tree from GitHub API."""
-    url = '%s/%s/%s/git/trees/%s?recursive=1' % (_GITHUB_API, user, repository, branch)
+    cb = random.randint(100000, 999999)
+    url = '%s/%s/%s/git/trees/%s?recursive=1&cb=%s' % (_GITHUB_API, user, repository, branch, cb)
     r = urequests.get(url, headers=_headers(token))
     data = json.loads(r.content.decode('utf-8'))
     r.close()
@@ -302,7 +304,9 @@ def pull_git_tree(user, repository, branch='main', token=''):
 
 def pull(filepath, raw_url, token=''):
     """Download a single file from GitHub and write it to the device."""
-    r = urequests.get(raw_url, headers=_headers(token))
+    cb = random.randint(100000, 999999)
+    busted_url = '%s?cb=%s' % (raw_url, cb)
+    r = urequests.get(busted_url, headers=_headers(token))
     data = r.content
     r.close()
     # ensure parent directory exists

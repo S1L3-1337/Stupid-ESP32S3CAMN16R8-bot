@@ -1,15 +1,13 @@
 import ugit
 from machine import reset
-import random
 
 try:
     ugit.wificonnect()
-    dyn_branch = f"main?cb={random.randint(100_000, 999_999)}"
-    uflag = ugit.check_for_updates(isconnected=True, branch=dyn_branch)
+    uflag = ugit.check_for_updates(isconnected=True, branch="main")
     if (uflag["new"] or uflag["changed"] or uflag["deleted"]):
         print("[INFO] [OTA] New updates found. Downloading...")
         ugit.backup()
-        ugit.pull_all(isconnected=True, branch=dyn_branch)
+        ugit.pull_all(isconnected=True, branch="main")
         print("[INFO] [OTA] Update complete. Rebooting...")
         reset()
     else:
