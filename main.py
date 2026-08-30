@@ -10,6 +10,7 @@ from machine import WDT
 import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep
+import esp32
 
 print(f"[INFO] initial free available memory: {gc.mem_free()}")
 print("[INFO] reading from RTC memory...")
@@ -37,7 +38,6 @@ if not rtc_json["config"]:
             "token": "***",
             "l_offset": "6a91d015a7019529a704ac19"
         }
-
 if not rtc_json["auth"]:
     try:
         print("[INFO] reading authorized.json's content...")
@@ -59,6 +59,7 @@ idle_count = 0
 HEADERS = {'Content-Type': 'application/json'}
 latest_offset: str = config.get("l_offset", "")
 _BOOT_TICK = time.ticks_ms()
+wlan = network.WLAN(network.STA_IF)
 
 print("Initializing Camera...")
 cam = Camera(
@@ -112,7 +113,7 @@ def capture_image():
         return None
 
 def connect_wifi():
-    wlan = network.WLAN(network.STA_IF)
+    global wlan
     wlan.active(True)
     if not wlan.isconnected():
         print("[INFO] connecting", end="")
@@ -142,7 +143,6 @@ async def update_offset(offset_id: str):
             RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
         except Exception as e:
             print("[ERROR] an error occured during write operation on RTC memory.")
-
 
 async def get_updates(offset_id: str, lim: int = 10):
     global idle_count
@@ -208,13 +208,16 @@ async def command_routing(msgtype: str, chat_id: str, text: str|None, sender_id:
         print(f"[COMMAND] /start received from {sender_id} in {chat_id}")
         print(f"user {sender_id} is already authorized")
         await send_text_message(chat_id, "Your already authorized.\n use /capture to recieve new photos.")
-    elif text == "/capture" and str(sender_id) in AUTH_USERS.get("user_id", []) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
-         await send_images(chat_id, message_id)
+    elif msgtype == "NewMessage" and text == "/capture" and str(sender_id) in AUTH_USERS.get("user_id", []) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
+        print(f"[COMMAND] /capture received from {sender_id} in {chat_id}")
+        await send_images(chat_id, message_id)
+    elif msgtype == "NewMessage" and text == "/info" and str(sender_id) in AUTH_USERS.get("user_id", []) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
+        print(f"[COMMAND] /info received from {sender_id} in {chat_id}")
+        await send_text_message(chat_id, await get_info_str(chat_id))
     elif msgtype == "NewMessage" and (str(sender_id) not in AUTH_USERS.get("user_id", []) or str(chat_id) in AUTH_USERS.get("blocked_chats", [])):
         print(f"[MESSAGE] message received from an unauthorized user: {sender_id} in {chat_id}")
     else:
         await send_text_message(chat_id, "unknown command!\n use /capture to capture new photos.")
-
 
 async def send_text_message(chat_id: str, msg: str):
         payload = {
@@ -234,6 +237,11 @@ async def send_text_message(chat_id: str, msg: str):
             print(f"[ERROR] network failure: ")
             print("unrecoverable for now, Panic!")
             raise e
+
+async def get_info_str(chat_id: str):
+    now = time.gmtime()
+    gmt_time = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
+    return f"--- --- ---\ntime(GMT):\n{gmt_time}\n--- --- ---\nfree-available-mem: {gc.mem_free()} bytes\nallocated_memory {gc.mem_alloc()} bytes\nfilesystem space: {os.statvfs("/")}\n--- --- ---\ntemp: {esp32.raw_temperature()} ^C\n--- --- ---\nWi-Fi interface: {wlan.active()}\nis-connected: {wlan.isconnected()}\nip-level parameters: {wlan.ifconfig()}\ngeneral parameters: {wlan.config()}\nlink-status: {wlan.status()}\n--- --- ---"
 
 def block_user(chat_id: str):
     global rtc_json
