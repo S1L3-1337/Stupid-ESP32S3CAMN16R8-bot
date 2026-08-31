@@ -71,6 +71,22 @@ wlan = network.WLAN(network.STA_IF)
 idle_count = 1
 session = aiohttp.ClientSession()
 
+def connect_wifi():
+    global wlan
+    wlan.active(True)
+    if not wlan.isconnected():
+        print("[INFO] [WIFI] connecting", end="")
+        wlan.connect(SSID, PASSWORD)
+    else:
+        wlan.disconnect()
+        wlan.connect()
+    while not wlan.isconnected():
+        time.sleep_ms(500)
+        print(".", end="")
+    print("[INFO] [WIFI] Connected! IP: ", wlan.ifconfig()[0])
+
+connect_wifi()
+
 async def find_last_offset(base_offset: str):
     print("[DEBUG] trying to find latest offset...")
     depth = 0
@@ -158,19 +174,6 @@ def capture_image():
         print("[ERROR] [CAM] capture failed...")
         return None
 
-def connect_wifi():
-    global wlan
-    wlan.active(True)
-    if not wlan.isconnected():
-        print("[INFO] [WIFI] connecting", end="")
-        wlan.connect(SSID, PASSWORD)
-    else:
-        wlan.disconnect()
-        wlan.connect()
-    while not wlan.isconnected():
-        time.sleep_ms(500)
-        print(".", end="")
-    print("[INFO] [WIFI] Connected! IP: ", wlan.ifconfig()[0])
 
 async def update_offset(offset_id: str):
     global rtc_json
@@ -402,8 +405,6 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
 async def main():
     global latest_offset
     print("[INITIAL] [MAIN] starting program...")
-
-    connect_wifi()
 
     while True:
         try:
