@@ -1,7 +1,7 @@
 import ugit
 from machine import reset
 import gc
-
+from main import connect_wifi, SSID, PASSWORD
 try:
     gc.collect()
     gc.collect()

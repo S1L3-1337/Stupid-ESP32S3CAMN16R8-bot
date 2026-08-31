@@ -110,7 +110,7 @@ async def find_last_offset(base_offset: str):
     print("[DEBUG] trying to find latest offset...")
     global latest_offset
     depth = 0
-    GETUPDATES_URL = "/getUpdates".join(URL)
+    GETUPDATES_URL = URL + "/getUpdates"
     PAYLOAD = ujson.dumps({"offset_id": base_offset}).encode('utf-8')
     while True:
         print(f"[DEBUG] checking depth={depth}")
@@ -129,6 +129,7 @@ async def find_last_offset(base_offset: str):
                         break
                     else:
                         base_offset = data.get("next_offset_id")
+                        depth += 1
                         continue
                 else:
                     print("[ERROR] [FIND_OFFSET] an error happened during POST request to fetch offset.")
