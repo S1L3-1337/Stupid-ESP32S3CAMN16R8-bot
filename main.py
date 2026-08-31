@@ -22,20 +22,54 @@ def custom_log_print(*args, **kwargs):
             ), *args, **kwargs)
 print = custom_log_print
 
+BASE_OFFSET = "6a94b3b0577044b7a9bba2ab"
+
+async def find_last_offset(base_offset: str):
+    print("[DEBUG] trying to find latest offset...")
+    depth = 0
+    GETUPDATES_URL = URL + "/getUpdates"
+    PAYLOAD = ujson.dumps({"offset_id": base_offset}).encode('utf-8')
+    while True:
+        print(f"[DEBUG] checking depth={depth}")
+        try:
+            async with session.post(
+                url=GETUPDATES_URL,
+                data=PAYLOAD,
+                headers=HEADERS
+            ) as response:
+                result = await response.json()
+                if "data" in result or result.get("status") == "OK":
+                    data = result.get("data", result)
+                    if (not ("next_offset_id" in data)) or (not data.get("updates", [])):
+                        print(f"[DEBUG] latest_offset FOUND in depth={depth}. returning...")
+                        return base_offset
+                    else:
+                        base_offset = data.get("next_offset_id")
+                        depth += 1
+                        continue
+                else:
+                    print("[ERROR] [FIND_OFFSET] an error happened during POST request to fetch offset.")
+                    raise Exception("None offset_id exception")
+        except Exception as e:
+            print("[ERROR] [FIND_OFFSET] an error happened during find_last_offset operation.")
+            raise e
+
+
 print(f"[INFO] [INITIAL] initial free available memory: {gc.mem_free()}")
 print(f"[INFO] [INITIAL] latest reset caused by: {reset_cause()}")
 
-rtc_json = {"config": {}, "auth": {}}
+rtc_json = {"config": {}, "auth": {}, "l_offset": ""}
 if rtc_content := RTC().memory():
     try:
         print("[INFO] [INITIAL] RTC memory valid. Loading config from RTC...")
         loaded_data = ujson.loads(rtc_content)
         rtc_json["config"] = loaded_data.get("config", {})
         rtc_json["auth"] = loaded_data.get("auth", {})
+        rtc_json["l_offset"] = loaded_data.get("l_offset", "")
     except ValueError:
-        print("[WARN] [INITIAL] RTC memory corrupted. Falling back to files.")
+        print("[WARN] [INITIAL] RTC memory corrupted. Falling back to alternatives.")
 else:
-    print("[WARN] [INITIAL] RTC memory invalid. Loading config from file...")
+    print("[WARN] [INITIAL] RTC memory invalid. Loading configurations from other options...")
 if not rtc_json["config"]:
     try:
         with open("config.json") as f:
@@ -55,6 +89,9 @@ if not rtc_json["auth"]:
         print("[ERROR] [INITIAL] authorized.json missing or corrupted. Panic!")
         raise e
 
+if not rtc_json["l_offset"]:
+        latest_offset = uasyncio.run(find_last_offset(BASE_OFFSET))
+
 config = rtc_json["config"]
 AUTH_USERS = rtc_json["auth"]
 SSID = config.get("ssid")
@@ -68,8 +105,6 @@ HEADERS = {'Content-Type': 'application/json'}
 _BOOT_TICK = time.ticks_ms()
 wlan = network.WLAN(network.STA_IF)
 session = aiohttp.ClientSession()
-BASE_OFFSET = "6a94b3b0577044b7a9bba2ab"
-latest_offset: str = ""
 
 cam = Camera(
     data_pins=[11, 9, 8, 10, 12, 18, 17, 16],
@@ -106,37 +141,6 @@ def get_uptime(unit: str = 'D'):
         print("[ERROR] [UPTIME] unknown unit.")
         raise ValueError
 
-async def find_last_offset(base_offset: str):
-    print("[DEBUG] trying to find latest offset...")
-    global latest_offset
-    depth = 0
-    GETUPDATES_URL = URL + "/getUpdates"
-    PAYLOAD = ujson.dumps({"offset_id": base_offset}).encode('utf-8')
-    while True:
-        print(f"[DEBUG] checking depth={depth}")
-        try:
-            async with session.post(
-                url=GETUPDATES_URL,
-                data=PAYLOAD,
-                headers=HEADERS
-            ) as response:
-                result = await response.json()
-                if "data" in result or result.get("status") == "OK":
-                    data = result.get("data", result)
-                    if (not ("next_offset_id" in data)) or (not data.get("updates", [])):
-                        latest_offset = base_offset
-                        print(f"[DEBUG] latest_offset FOUND in depth={depth}. breaking...")
-                        break
-                    else:
-                        base_offset = data.get("next_offset_id")
-                        depth += 1
-                        continue
-                else:
-                    print("[ERROR] [FIND_OFFSET] an error happened during POST request to fetch offset.")
-                    raise Exception("None offset_id exception")
-        except Exception as e:
-            print("[ERROR] [FIND_OFFSET] an error happened during find_last_offset operation.")
-            raise e
 
 def capture_image():
     frame = cam.capture()
@@ -171,7 +175,7 @@ def connect_wifi():
 async def update_offset(offset_id: str):
     global rtc_json
     try:
-        rtc_json['config']['l_offset'] = offset_id
+        rtc_json['l_offset'] = offset_id
         RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
     except Exception as e:
         print("[ERROR] [OFFSET] an error occured during write operation on RTC memory.")
@@ -398,8 +402,9 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
 async def main():
     global latest_offset
     print("[INITIAL] [MAIN] starting program...")
+
     connect_wifi()
-    await find_last_offset(BASE_OFFSET)
+
     while True:
         try:
             wdt.feed()
