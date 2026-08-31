@@ -1,4 +1,3 @@
 {
-  "user_id": ["AUTHORIZED_USER_ID"],
-  "blocked_chats": ["BLOCKED_CHAT_ID"]
+"user_id": ["AUTHORIZED_USER_ID"]
 }

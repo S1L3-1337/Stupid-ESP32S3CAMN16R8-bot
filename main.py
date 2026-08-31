@@ -6,7 +6,7 @@ from camera import Camera, PixelFormat, FrameSize, GrabMode
 import jpeg
 import os
 import gc
-from machine import WDT
+from machine import WDT, idle
 import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep, reset_cause
@@ -57,7 +57,7 @@ if not rtc_json["auth"]:
         raise e
 
 config = rtc_json["config"]
-AUTH_USERS = rtc_json["auth"]
+AUTH_USERS = rtc_json["auth"]["user_id"]
 TOKEN = config.get("token")
 URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 SSID = config.get("ssid")
@@ -70,7 +70,7 @@ BASE_OFFSET = "6a94b3b0577044b7a9bba2ab"
 wlan = network.WLAN(network.STA_IF)
 idle_count = 1
 session = aiohttp.ClientSession()
-latest_offset = ""
+latest_offset = rtc_json["l_offset"]
 
 def connect_wifi():
     global wlan
@@ -238,21 +238,20 @@ async def get_updates(offset_id: str, lim: int = 10):
 
 async def command_routing(msgtype: str, chat_id: str, text: str|None, sender_id: str|None, message_id: str|None):
     print("[INFO] [COMMAND]: new message received.")
-    if msgtype == "StartedBot" and not (text or sender_id) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
+    if msgtype == "StartedBot" and not (text or sender_id) and str(chat_id) not in AUTH_USERS:
         print(f"[INFO] [COMMAND] new /start received in {chat_id}")
         print(f"[INFO] [COMMAND] UNAUTHORIZED ACCESS IN {chat_id}. BLOCKING USER.../!")
-        block_user(str(chat_id))
-    elif msgtype == "NewMessage" and text == "/start" and str(sender_id) in AUTH_USERS.get("user_id", []) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
+    elif msgtype == "NewMessage" and text == "/start" and str(sender_id) in AUTH_USERS:
         print(f"[INFO] [COMMAND] /start received from {sender_id} in {chat_id}")
         print(f"[INFO] [COMMAND] user {sender_id} is already authorized")
         await send_text_message(chat_id, "Your already authorized.\n use /capture to recieve new photos.\n use /info to get MCU's stats and info.")
-    elif msgtype == "NewMessage" and text == "/capture" and str(sender_id) in AUTH_USERS.get("user_id", []) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
+    elif msgtype == "NewMessage" and text == "/capture" and str(sender_id) in AUTH_USERS:
         print(f"[COMMAND] /capture received from {sender_id} in {chat_id}")
         await send_images(chat_id, message_id)
-    elif msgtype == "NewMessage" and text == "/info" and str(sender_id) in AUTH_USERS.get("user_id", []) and str(chat_id) not in AUTH_USERS.get("blocked_chats", []):
+    elif msgtype == "NewMessage" and text == "/info" and str(sender_id) in AUTH_USERS:
         print(f"[INFO] [COMMAND] /info received from {sender_id} in {chat_id}")
         await send_text_message(chat_id, await get_info_str(chat_id))
-    elif msgtype == "NewMessage" and (str(sender_id) not in AUTH_USERS.get("user_id", []) or str(chat_id) in AUTH_USERS.get("blocked_chats", [])):
+    elif msgtype == "NewMessage" and (str(sender_id) not in AUTH_USERS):
         print(f"[INFO] [MESSAGE] message received from an unauthorized user: {sender_id} in {chat_id}")
     else:
         await send_text_message(chat_id, "unknown command!\n use /capture to capture new photos\n use /info to get MCU's stats and info.")
@@ -279,29 +278,6 @@ async def get_info_str(chat_id: str):
     channel = wlan.config('channel')
     gmt_time = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
     return f"time(GMT):\n{gmt_time}\n--- DEVICE INFO ---\nFree RAM: {gc.mem_free()}b\nAllocated RAM: {gc.mem_alloc()}b\nFree FLASH: {free_kb}KB\nTemperature: {esp32.mcu_temperature()}°C\n--- --- ---\nWi-Fi active: {wlan.active()}\nConnected: {wlan.isconnected()}\nIP: {wlan.ifconfig()[0]}\nSSID: {ssid}\nWiFi Channel: {channel}\nLink Status: {wlan.status()}\n--- --- ---"
-
-def block_user(chat_id: str):
-    global rtc_json
-    if "blocked_chats" not in AUTH_USERS:
-        AUTH_USERS["blocked_chats"] = []
-    AUTH_USERS["blocked_chats"].append(chat_id)
-    if get_uptime('H') > 6:
-        print("[INFO] [BLOCK] 6h uptime limit reached.")
-        try:
-            with open("authorized.json.temp", mode='w') as f:
-                ujson.dump(AUTH_USERS, f)
-            os.rename("authorized.json.temp", "authorized.json")
-            os.sync()
-        except OSError as e:
-            print(f"[ERROR] [BLOCK] Failed to write authorized.json: {e}")
-            raise e
-    else:
-        try:
-            rtc_json['auth'] = AUTH_USERS
-            RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
-        except Exception as e:
-            print(f"[ERROR] [BLOCK] Failed to write new data to RTC memory.: {e}")
-            raise e
 
 async def send_images(chat_id, reply_message_id):
     global session
@@ -403,9 +379,7 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
     return full_payload, custom_headers # --- END OF AI-ASSISTED PART
 
 async def main():
-    global latest_offset
     print("[INITIAL] [MAIN] starting program...")
-
     while True:
         try:
             wdt.feed()
