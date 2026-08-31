@@ -277,7 +277,7 @@ async def get_info_str(chat_id: str):
     ssid = wlan.config('ssid')
     channel = wlan.config('channel')
     gmt_time = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
-    return f"time(GMT):\n{gmt_time}\n--- DEVICE INFO ---\nFree RAM: {gc.mem_free()}b\nAllocated RAM: {gc.mem_alloc()}b\nFree FLASH: {free_kb}KB\nTemperature: {esp32.mcu_temperature()}°C\n--- --- ---\nWi-Fi active: {wlan.active()}\nConnected: {wlan.isconnected()}\nIP: {wlan.ifconfig()[0]}\nSSID: {ssid}\nWiFi Channel: {channel}\nLink Status: {wlan.status()}\n--- --- ---"
+    return f"time(GMT):\n{gmt_time}\n-*-*- DEVICE INFO -*-*-\nFree RAM: {gc.mem_free()}b\nAllocated RAM: {gc.mem_alloc()}b\nFree FLASH: {free_kb}KB\nTemperature: {esp32.mcu_temperature()}°C\n-*- *-* -*-\nWi-Fi active: {wlan.active()}\nConnected: {wlan.isconnected()}\nIP: {wlan.ifconfig()[0]}\nSSID: {ssid}\nWiFi Channel: {channel}\nLink Status: {wlan.status()}\n--- --- ---"
 
 async def send_images(chat_id, reply_message_id):
     global session
