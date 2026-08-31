@@ -22,39 +22,6 @@ def custom_log_print(*args, **kwargs):
             ), *args, **kwargs)
 print = custom_log_print
 
-BASE_OFFSET = "6a94b3b0577044b7a9bba2ab"
-
-async def find_last_offset(base_offset: str):
-    print("[DEBUG] trying to find latest offset...")
-    depth = 0
-    GETUPDATES_URL = URL + "/getUpdates"
-    PAYLOAD = ujson.dumps({"offset_id": base_offset}).encode('utf-8')
-    while True:
-        print(f"[DEBUG] checking depth={depth}")
-        try:
-            async with session.post(
-                url=GETUPDATES_URL,
-                data=PAYLOAD,
-                headers=HEADERS
-            ) as response:
-                result = await response.json()
-                if "data" in result or result.get("status") == "OK":
-                    data = result.get("data", result)
-                    if (not ("next_offset_id" in data)) or (not data.get("updates", [])):
-                        print(f"[DEBUG] latest_offset FOUND in depth={depth}. returning...")
-                        return base_offset
-                    else:
-                        base_offset = data.get("next_offset_id")
-                        depth += 1
-                        continue
-                else:
-                    print("[ERROR] [FIND_OFFSET] an error happened during POST request to fetch offset.")
-                    raise Exception("None offset_id exception")
-        except Exception as e:
-            print("[ERROR] [FIND_OFFSET] an error happened during find_last_offset operation.")
-            raise e
-
-
 print(f"[INFO] [INITIAL] initial free available memory: {gc.mem_free()}")
 print(f"[INFO] [INITIAL] latest reset caused by: {reset_cause()}")
 
@@ -89,22 +56,55 @@ if not rtc_json["auth"]:
         print("[ERROR] [INITIAL] authorized.json missing or corrupted. Panic!")
         raise e
 
+config = rtc_json["config"]
+AUTH_USERS = rtc_json["auth"]
+TOKEN = config.get("token")
+URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
+SSID = config.get("ssid")
+PASSWORD = config.get("password")
+LAST_FETCH = time.ticks_ms()
+LAST_PUSH = time.ticks_ms()
+HEADERS = {'Content-Type': 'application/json'}
+_BOOT_TICK = time.ticks_ms()
+BASE_OFFSET = "6a94b3b0577044b7a9bba2ab"
+wlan = network.WLAN(network.STA_IF)
+idle_count = 1
+session = aiohttp.ClientSession()
+
+async def find_last_offset(base_offset: str):
+    print("[DEBUG] trying to find latest offset...")
+    depth = 0
+    GETUPDATES_URL = URL + "/getUpdates"
+    PAYLOAD = ujson.dumps({"offset_id": base_offset}).encode('utf-8')
+    while True:
+        print(f"[DEBUG] checking depth={depth}")
+        try:
+            async with session.post(
+                url=GETUPDATES_URL,
+                data=PAYLOAD,
+                headers=HEADERS
+            ) as response:
+                result = await response.json()
+                if "data" in result or result.get("status") == "OK":
+                    data = result.get("data", result)
+                    if (not ("next_offset_id" in data)) or (not data.get("updates", [])):
+                        print(f"[DEBUG] latest_offset FOUND in depth={depth}. returning...")
+                        return base_offset
+                    else:
+                        base_offset = data.get("next_offset_id")
+                        depth += 1
+                        continue
+                else:
+                    print("[ERROR] [FIND_OFFSET] an error happened during POST request to fetch offset.")
+                    raise Exception("None offset_id exception")
+        except Exception as e:
+            print("[ERROR] [FIND_OFFSET] an error happened during find_last_offset operation.")
+            raise e
+
 if not rtc_json["l_offset"]:
         latest_offset = uasyncio.run(find_last_offset(BASE_OFFSET))
 
-config = rtc_json["config"]
-AUTH_USERS = rtc_json["auth"]
-SSID = config.get("ssid")
-PASSWORD = config.get("password")
-TOKEN = config.get("token")
-URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
-LAST_FETCH = time.ticks_ms()
-LAST_PUSH = time.ticks_ms()
-idle_count = 1
-HEADERS = {'Content-Type': 'application/json'}
-_BOOT_TICK = time.ticks_ms()
-wlan = network.WLAN(network.STA_IF)
-session = aiohttp.ClientSession()
+
 
 cam = Camera(
     data_pins=[11, 9, 8, 10, 12, 18, 17, 16],
