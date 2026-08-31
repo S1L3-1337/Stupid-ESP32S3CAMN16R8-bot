@@ -6,7 +6,7 @@ from camera import Camera, PixelFormat, FrameSize, GrabMode
 import jpeg
 import os
 import gc
-from machine import WDT, idle
+from machine import WDT
 import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep, reset_cause
@@ -70,6 +70,7 @@ BASE_OFFSET = "6a94b3b0577044b7a9bba2ab"
 wlan = network.WLAN(network.STA_IF)
 idle_count = 1
 session = aiohttp.ClientSession()
+latest_offset = ""
 
 def connect_wifi():
     global wlan
@@ -91,13 +92,12 @@ async def find_last_offset(base_offset: str):
     print("[DEBUG] trying to find latest offset...")
     depth = 0
     GETUPDATES_URL = URL + "/getUpdates"
-    PAYLOAD = ujson.dumps({"offset_id": base_offset}).encode('utf-8')
     while True:
         print(f"[DEBUG] checking depth={depth}")
         try:
             async with session.post(
                 url=GETUPDATES_URL,
-                data=PAYLOAD,
+                data=ujson.dumps({"offset_id": base_offset}).encode('utf-8'),
                 headers=HEADERS
             ) as response:
                 result = await response.json()
