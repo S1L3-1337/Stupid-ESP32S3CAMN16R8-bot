@@ -289,6 +289,13 @@ def wificonnect(ssid=None, password=None):
     print('WiFi connected:', wlan.ifconfig()[0])
     return wlan
 
+def wifidisconnect():
+    wlan = network.WLAN(network.STA_IF)
+    if wlan.isconnected():
+        wlan.disconnect()
+        return True
+    else:
+        return False
 
 def pull_git_tree(user, repository, branch='main', token=''):
     """Fetch the full recursive tree from GitHub API."""
