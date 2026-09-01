@@ -6,7 +6,7 @@ from camera import Camera, PixelFormat, FrameSize, GrabMode
 import jpeg
 import os
 import gc
-from machine import WDT, idle
+from machine import WDT
 import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep, reset_cause
