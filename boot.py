@@ -53,10 +53,10 @@ def concrete_update():
         else:
             pass
 
-    except Exception as e:
-        print(f"[ERROR] [OTA] Update operation failed: {e}")
-        if isinstance(e, OSError) and e.args:
-            err_code = e.errno if hasattr(e, 'errno') else e.args[0]
+    except Exception as e0:
+        print(f"[ERROR] [OTA] Update operation failed: {e0}")
+        if isinstance(e0, OSError) and e0.args:
+            err_code = e0.errno if hasattr(e0, 'errno') else e0.args[0]
             if err_code in network_codes:
                 print(f"[ERROR] [OTA] update operation failed due to netowork error: {err_code}")
                 print("[INFO] [OTA] retrying the update operation...")
@@ -67,11 +67,15 @@ def concrete_update():
                         ugit.pull_all(isconnected=True, branch="main")
                         print("[INFO] [OTA] Update complete. Rebooting...")
                         reset()
-                    except Exception as e:
-                        if isinstance(e, OSError):
-                            err_code = e.errno if hasattr(e, 'errno') else e.args[0]
-                            if err_code in network_codes and repeat < 4:
+                    except Exception as e1:
+                        if isinstance(e1, OSError):
+                            err_code = e1.errno if hasattr(e1, 'errno') else e1.args[0]
+                            if (err_code in network_codes) and repeat < 4:
                                 continue
+                            elif err_code not in network_codes:
+                                print("[ERROR] [OTA] retry-update operations failed due to non-network OSError. [POS=-1]")
+                                rollback_mechanism()
+                                break
                             else:
                                 print("[ERROR] [INFO] retrying failed... booting into main.py")
                                 break
