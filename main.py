@@ -454,8 +454,10 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
 async def main():
     print("[INITIAL] [WEBSOCKET] starting WEBSOCKET...")
     uasyncio.create_task(app.start_server(host='0.0.0.0', port=80))
+    print("[INFO] [MAIN] *--- LOADED HISTORY ---*")
     for log in rtc_json["boot_log"]:
         print(log)
+    print("[INFO] [MAIN] *--- LOADED HISTORY ---*")
 
     del logger.active_connections
 
