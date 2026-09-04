@@ -4,7 +4,7 @@ import gc
 import errno
 
 backup_created = False
-network_codes = [errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT]
+network_codes = [errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENOTCONN, -2, -202, -3]
 
 def rollback_mechanism():
     if backup_created:
@@ -28,12 +28,17 @@ def concrete_check():
         try:
             return ugit.check_for_updates()
         except Exception as e:
+            print(e)
             if isinstance(e, OSError):
-                print(e)
-                if i < 4:
-                    continue
+                err_code = e.errno if hasattr(e, 'errno') else e.args[0] if isinstance(e.args, (tuple, list)) else e.args
+                if err_code in network_codes:
+                    if i < 9:
+                        continue
+                    else:
+                        print("[ERROR] [OTA] checking for updates failed. probably due to network related issue.\nbooting into main.py")
+                        return None
                 else:
-                    print("[ERROR] [OTA] checking for updates failed. probably due to network related issue.\nbooting into main.py")
+                    print("[ERROR] [OTA] checking for updates failed due to non-network related issue.\nbooting into main.py")
                     return None
             else: # not network related.
                 print("[ERROR] [OTA] checking for updates failed due to non-network related issue.\nbooting into main.py")
@@ -61,7 +66,7 @@ def concrete_update():
     except Exception as e0:
         print(f"[ERROR] [OTA] Update operation failed: {e0}")
         if isinstance(e0, OSError) and e0.args:
-            err_code = e0.errno if hasattr(e0, 'errno') else e0.args[0]
+            err_code = e0.errno if hasattr(e0, 'errno') else e0.args[0] if isinstance(e0.args, (tuple, list)) else e0.args
             if err_code in network_codes:
                 print(f"[ERROR] [OTA] update operation failed due to netowork error: {err_code}")
                 print("[INFO] [OTA] retrying the update operation...")
@@ -74,8 +79,8 @@ def concrete_update():
                         reset()
                     except Exception as e1:
                         if isinstance(e1, OSError):
-                            err_code = e1.errno if hasattr(e1, 'errno') else e1.args[0]
-                            if (err_code in network_codes) and repeat < 4:
+                            err_code = e1.errno if hasattr(e1, 'errno') else e1.args[0] if isinstance(e1.args, (tuple, list)) else e1.args
+                            if (err_code in network_codes) and repeat < 9:
                                 continue
                             elif err_code not in network_codes:
                                 print("[ERROR] [OTA] retry-update operations failed due to non-network OSError. [POS=-1]")
