@@ -11,16 +11,103 @@ import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep, reset_cause
 import esp32
+from microdot import Microdot
+from microdot.websocket import with_websocket
 
-
+app = Microdot()
+active_connections = set()
 original_print = print
+
 def custom_log_print(*args, **kwargs):
     now = time.gmtime()
+    p_timestamp = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
+    log_text = " ".join(str(arg) for arg in args)
+    full_message = f"{p_timestamp} | {log_text}"
 
-    original_print("{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
-                now[0], now[1], now[2], now[3], now[4], now[5]
-            ), *args, **kwargs)
+    original_print(full_message, **kwargs)
+
+    for wsocket in active_connections:
+        try:
+            uasyncio.create_task(wsocket.send(full_message))
+        except:
+            print("[WARNING] [WEBSOCKET] an error occured during sending operation.")
+
 print = custom_log_print
+
+@app.route('/')
+async def index(request):
+    html_page = """<!DOCTYPE html>
+    <html>
+    <head>
+        <title>Live Camera Log Terminal</title>
+        <style>
+            body { background: #121212; color: #00ff00; font-family: 'Courier New', monospace; padding: 20px; margin: 0; }
+            h2 { color: #ffffff; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
+            #terminal {
+                background: #0a0a0a; border: 1px solid #333; border-radius: 5px;
+                padding: 15px; height: 70vh; overflow-y: scroll; display: flex; flex-direction: column;
+            }
+            .log-line { margin: 3px 0; word-break: break-all; white-space: pre-wrap; }
+            .system-tag { color: #00adb5; }
+        </style>
+    </head>
+    <body>
+        <h2>🎥 Live System Diagnostic Console</h2>
+        <div id="terminal"></div>
+
+        <script>
+            const terminal = document.getElementById('terminal');
+            let isUserScrolling = false;
+
+            // Detect manual scrolling up so we don't snap the user downward
+            terminal.addEventListener('scroll', () => {
+                const diff = terminal.scrollHeight - terminal.clientHeight - terminal.scrollTop;
+                isUserScrolling = diff > 50; // User scrolled up by more than 50px
+            });
+
+            function appendLog(text) {
+                const line = document.createElement('div');
+                line.className = 'log-line';
+                line.textContent = text;
+                terminal.appendChild(line);
+
+                // Auto scroll to bottom ONLY if user isn't reading history above
+                if (!isUserScrolling) {
+                    terminal.scrollTop = terminal.scrollHeight;
+                }
+            }
+
+            // Connect automatically to the MicroPython WebSocket
+            const ws = new WebSocket('ws://' + window.location.host + '/ws');
+
+            ws.onmessage = function(event) {
+                appendLog(event.data);
+            };
+
+            ws.onclose = function() {
+                appendLog("[ERROR] [WEBSOCKET] Connection lost to camera server.");
+            };
+        </script>
+    </body>
+    </html>
+    """
+    return html_page, 200, {'Content-Type': 'text/html'}
+
+@app.route("/ws")
+@with_websocket
+async def ws_log_stream(request, ws):
+    active_connections.add(ws)
+    print(f"[INFO] [WEBSOCKET] Diagnostic client attached. Total open web sockets: {len(active_connections)}")
+    try:
+        while True:
+            data = await ws.receive()
+            if not data:
+                break
+    except:
+        pass
+    finally:
+        active_connections.remove(ws)
+        print("[WARNING] [WEBSOCKET] websocket client detached.") # it doesn't causes loop
 
 print(f"[INFO] [INITIAL] initial free available memory: {gc.mem_free()}")
 print(f"[INFO] [INITIAL] latest reset caused by: {reset_cause()}")
@@ -380,6 +467,8 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
 
 async def main():
     print("[INITIAL] [MAIN] starting program...")
+
+    await app.start_server(host='0.0.0.0', port=80)
     while True:
         try:
             wdt.feed()
