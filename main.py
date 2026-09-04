@@ -11,10 +11,12 @@ import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep, reset_cause
 import esp32
-from builtins import original_print
+import logger
+from logger import original_print
 from microdot import Microdot
 from microdot.websocket import with_websocket
 
+logger.init()
 app = Microdot()
 active_connections = set()
 
