@@ -457,6 +457,8 @@ async def main():
     for log in rtc_json["boot_log"]:
         print(log)
 
+    del logger.active_connections
+
     print("[INITIAL] [MAIN] starting main program...")
     while True:
         try:
