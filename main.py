@@ -83,7 +83,7 @@ def connect_wifi():
         wlan.connect()
     while not wlan.isconnected():
         time.sleep_ms(500)
-        print(".", end="")
+        original_print(".", end="")
     print("[INFO] [WIFI] Connected! IP: ", wlan.ifconfig()[0])
 
 connect_wifi()

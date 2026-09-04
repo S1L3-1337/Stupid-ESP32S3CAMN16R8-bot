@@ -34,7 +34,7 @@ import random
 _GITHUB_API = 'https://api.github.com/repos'
 _GITHUB_RAW = 'https://raw.githubusercontent.com'
 _USER_AGENT = 'ugit-turfptax'
-_CONFIG_PATH = '/config.json'
+_CONFIG_PATH = '/ugit_config.json'
 
 
 def _headers(token=''):

@@ -24,14 +24,19 @@ def rollback_mechanism():
         return None
 
 def concrete_check():
-    for i in range(5):
+    for i in range(10):
         try:
             return ugit.check_for_updates()
         except Exception as e:
-            if i < 4:
-                continue
-            else:
-                print("checking for updates failed. booting into main.py")
+            if isinstance(e, OSError):
+                print(e)
+                if i < 4:
+                    continue
+                else:
+                    print("[ERROR] [OTA] checking for updates failed. probably due to network related issue.\nbooting into main.py")
+                    return None
+            else: # not network related.
+                print("[ERROR] [OTA] checking for updates failed due to non-network related issue.\nbooting into main.py")
                 return None
 
 def concrete_update():
@@ -60,7 +65,7 @@ def concrete_update():
             if err_code in network_codes:
                 print(f"[ERROR] [OTA] update operation failed due to netowork error: {err_code}")
                 print("[INFO] [OTA] retrying the update operation...")
-                for repeat in range(5):
+                for repeat in range(10):
                     try:
                         gc.collect()
                         gc.collect()
