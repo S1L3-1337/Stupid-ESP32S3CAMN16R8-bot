@@ -10,7 +10,7 @@ import uasyncio
 
 backup_created = False
 network_codes = [errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENOTCONN, -2, -202, -3]
-builtins.original_print = print
+sys.modules['builtins'].__dict__['original_print'] = print
 
 try:
     rtc_data = RTC().memory().decode('utf-8')
