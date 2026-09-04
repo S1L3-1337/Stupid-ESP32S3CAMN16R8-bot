@@ -16,7 +16,7 @@ from logger import original_print
 from microdot import Microdot
 from microdot.websocket import with_websocket
 
-logger.init()
+print = logger.custom_log_print()
 app = Microdot()
 active_connections = set()
 

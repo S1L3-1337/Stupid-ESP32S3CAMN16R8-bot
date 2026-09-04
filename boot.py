@@ -7,7 +7,7 @@ import logger
 backup_created = False
 network_codes = [errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENOTCONN, -2, -202, -3]
 logger.boot_phase = True
-logger.init()
+print = logger.custom_log_print
 
 print("[INITIAL] [BOOT] starting OTA...")
 
