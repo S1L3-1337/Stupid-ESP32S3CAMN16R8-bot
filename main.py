@@ -105,7 +105,7 @@ if rtc_content := RTC().memory():
         rtc_json["config"] = loaded_data.get("config", {})
         rtc_json["auth"] = loaded_data.get("auth", {})
         rtc_json["l_offset"] = loaded_data.get("l_offset", "")
-        rtc_json["boot_log"] = loaded_data.get("l_offset", [])
+        rtc_json["boot_log"] = loaded_data.get("boot_log", [])
     except Exception:
         print("[WARN] [INITIAL] RTC memory corrupted. Falling back to alternatives.")
 else:
