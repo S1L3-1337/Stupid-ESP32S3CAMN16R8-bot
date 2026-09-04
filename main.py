@@ -468,7 +468,7 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
 async def main():
     print("[INITIAL] [MAIN] starting program...")
 
-    await app.start_server(host='0.0.0.0', port=80)
+    uasyncio.create_task(app.start_server(host='0.0.0.0', port=80))
     while True:
         try:
             wdt.feed()
