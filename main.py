@@ -11,14 +11,15 @@ import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep, reset_cause
 import esp32
-import logger
 from logger import original_print
 from microdot import Microdot
 from microdot.websocket import with_websocket
 
-print = logger.custom_log_print()
 app = Microdot()
 active_connections = set()
+
+import logger # fuck python
+print = logger.custom_log_print()
 
 @app.route('/') # --- BEGINNING OF AI-ASSISTED PART ---
 async def index(request):
