@@ -18,7 +18,7 @@ from microdot.websocket import with_websocket
 app = Microdot()
 active_connections = set()
 
-@app.route('/')
+@app.route('/') # --- BEGINNING OF AI-ASSISTED PART ---
 async def index(request):
     html_page = """<!DOCTYPE html>
     <html>
@@ -75,7 +75,7 @@ async def index(request):
     </body>
     </html>
     """
-    return html_page, 200, {'Content-Type': 'text/html'}
+    return html_page, 200, {'Content-Type': 'text/html'} # --- END OF AI-ASSISTED PART ---
 
 @app.route("/ws")
 @with_websocket
@@ -91,12 +91,12 @@ async def ws_log_stream(request, ws):
         pass
     finally:
         active_connections.remove(ws)
-        print("[WARNING] [WEBSOCKET] websocket client detached.") # it doesn't causes loop
+        original_print("[WARNING] [WEBSOCKET] websocket client detached.") # it doesn't causes loop
 
 print(f"[INFO] [INITIAL] initial free available memory: {gc.mem_free()}")
 print(f"[INFO] [INITIAL] latest reset caused by: {reset_cause()}")
 
-rtc_json = {"config": {}, "auth": {}, "l_offset": ""}
+rtc_json = {"config": {}, "auth": {}, "l_offset": "", "boot_log": []}
 if rtc_content := RTC().memory():
     try:
         print("[INFO] [INITIAL] RTC memory valid. Loading config from RTC...")
@@ -104,7 +104,8 @@ if rtc_content := RTC().memory():
         rtc_json["config"] = loaded_data.get("config", {})
         rtc_json["auth"] = loaded_data.get("auth", {})
         rtc_json["l_offset"] = loaded_data.get("l_offset", "")
-    except ValueError:
+        rtc_json["boot_log"] = loaded_data.get("l_offset", [])
+    except Exception:
         print("[WARN] [INITIAL] RTC memory corrupted. Falling back to alternatives.")
 else:
     print("[WARN] [INITIAL] RTC memory invalid. Loading configurations from other options...")
@@ -450,10 +451,12 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
     return full_payload, custom_headers # --- END OF AI-ASSISTED PART
 
 async def main():
-    print("[INITIAL] [MAIN] starting program...")
-
+    print("[INITIAL] [WEBSOCKET] starting WEBSOCKET...")
     uasyncio.create_task(app.start_server(host='0.0.0.0', port=80))
+    for log in rtc_json["boot_log"]:
+        print(log)
 
+    print("[INITIAL] [MAIN] starting main program...")
     while True:
         try:
             wdt.feed()

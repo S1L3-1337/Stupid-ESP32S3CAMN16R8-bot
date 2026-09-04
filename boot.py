@@ -1,15 +1,24 @@
 import ugit
-from machine import reset
+from machine import reset, RTC
 import gc
 import errno
 import time
 import builtins
 import sys
+import ujson
+import uasyncio
 
 backup_created = False
 network_codes = [errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENOTCONN, -2, -202, -3]
-
 builtins.original_print = print
+
+try:
+    rtc_data = RTC().memory().decode('utf-8')
+    rtc_json = ujson.loads(rtc_data)
+    if "boot_log" not in rtc_json:
+        rtc_json["boot_log"] = []
+except Exception:
+    rtc_json = {"config": {}, "auth": {}, "l_offset": "", "boot_log": []}
 
 def custom_log_print(*args, **kwargs):
     now = time.gmtime()
@@ -28,7 +37,13 @@ def custom_log_print(*args, **kwargs):
             except:
                 builtins.original_print("[WARNING] [WEBSOCKET] an error occured during sending operation.")
 
+    if __name__ == "boot":
+        rtc_json["boot_log"].append(full_message) # save the boot logs for future's websocket in main.py
+        RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
+
 print = custom_log_print
+
+print("[INITIAL] [BOOT] starting OTA...")
 
 def rollback_mechanism():
     if backup_created:
