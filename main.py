@@ -1,25 +1,24 @@
+from stdlib._collections_abc import Callable
 import time
 import network
 import uasyncio
 import ujson
-from camera import Camera, PixelFormat, FrameSize, GrabMode
+import logger
+import aiohttp
+import urequests
 import jpeg
 import os
 import gc
-from machine import WDT
-import aiohttp
-import urequests
-from machine import RTC, reset, lightsleep, reset_cause
 import esp32
+from machine import WDT
+from camera import Camera, PixelFormat, FrameSize, GrabMode
+from machine import RTC, reset, lightsleep, reset_cause
 from logger import original_print
 from microdot import Microdot
 from microdot.websocket import with_websocket
 
 app = Microdot()
-active_connections = set()
-
-import logger # fuck python
-print = logger.custom_log_print()
+print = logger.custom_log_print
 
 @app.route('/') # --- BEGINNING OF AI-ASSISTED PART ---
 async def index(request):
@@ -83,8 +82,8 @@ async def index(request):
 @app.route("/ws")
 @with_websocket
 async def ws_log_stream(request, ws):
-    active_connections.add(ws)
-    print(f"[INFO] [WEBSOCKET] Diagnostic client attached. Total open web sockets: {len(active_connections)}")
+    logger.active_connections.add(ws)
+    print(f"[INFO] [WEBSOCKET] Diagnostic client attached. Total open web sockets: {len(logger.active_connections)}")
     try:
         while True:
             data = await ws.receive()
@@ -93,7 +92,7 @@ async def ws_log_stream(request, ws):
     except:
         pass
     finally:
-        active_connections.remove(ws)
+        logger.active_connections.remove(ws)
         original_print("[WARNING] [WEBSOCKET] websocket client detached.") # it doesn't causes loop
 
 print(f"[INFO] [INITIAL] initial free available memory: {gc.mem_free()}")

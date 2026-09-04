@@ -14,6 +14,7 @@ except Exception:
 
 boot_phase = False
 original_print = print
+active_connections = set()
 
 def custom_log_print(*args, **kwargs):
     now = time.gmtime()
