@@ -1,4 +1,3 @@
-from stdlib._collections_abc import Callable
 import time
 import network
 import uasyncio

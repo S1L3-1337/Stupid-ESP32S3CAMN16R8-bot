@@ -25,8 +25,6 @@ def custom_log_print(*args, **kwargs):
     original_print(full_message, **kwargs)
 
     if not boot_phase:
-        active_connections = sys.modules['__main__'].active_connections if hasattr(sys.modules['__main__'], "active_connections") else {}
-
         for wsocket in active_connections:
             try:
                 uasyncio.create_task(wsocket.send(full_message))
