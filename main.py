@@ -464,8 +464,6 @@ async def main():
     if rtc_json["boot_log"]:
         print("[INFO] [MAIN] *--- LOADED HISTORY ---*")
 
-    del logger.active_connections
-
     print("[INITIAL] [MAIN] starting main program...")
     while True:
         try:
