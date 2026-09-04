@@ -11,28 +11,12 @@ import aiohttp
 import urequests
 from machine import RTC, reset, lightsleep, reset_cause
 import esp32
+from builtins import original_print
 from microdot import Microdot
 from microdot.websocket import with_websocket
 
 app = Microdot()
 active_connections = set()
-original_print = print
-
-def custom_log_print(*args, **kwargs):
-    now = time.gmtime()
-    p_timestamp = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
-    log_text = " ".join(str(arg) for arg in args)
-    full_message = f"{p_timestamp} | {log_text}"
-
-    original_print(full_message, **kwargs)
-
-    for wsocket in active_connections:
-        try:
-            uasyncio.create_task(wsocket.send(full_message))
-        except:
-            print("[WARNING] [WEBSOCKET] an error occured during sending operation.")
-
-print = custom_log_print
 
 @app.route('/')
 async def index(request):
@@ -469,6 +453,7 @@ async def main():
     print("[INITIAL] [MAIN] starting program...")
 
     uasyncio.create_task(app.start_server(host='0.0.0.0', port=80))
+
     while True:
         try:
             wdt.feed()

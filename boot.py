@@ -2,9 +2,33 @@ import ugit
 from machine import reset
 import gc
 import errno
+import time
+import builtins
+import sys
 
 backup_created = False
 network_codes = [errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENOTCONN, -2, -202, -3]
+
+builtins.original_print = print
+
+def custom_log_print(*args, **kwargs):
+    now = time.gmtime()
+    p_timestamp = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
+    log_text = " ".join(str(arg) for arg in args)
+    full_message = f"{p_timestamp} | {log_text}"
+
+    builtins.original_print(full_message, **kwargs)
+
+    if '__main__' in sys.modules:
+        active_connections = sys.modules['__main__'].active_connections if hasattr(sys.modules['__main__'], "active_connections") else {}
+
+        for wsocket in active_connections:
+            try:
+                uasyncio.create_task(wsocket.send(full_message))
+            except:
+                builtins.original_print("[WARNING] [WEBSOCKET] an error occured during sending operation.")
+
+print = custom_log_print
 
 def rollback_mechanism():
     if backup_created:
