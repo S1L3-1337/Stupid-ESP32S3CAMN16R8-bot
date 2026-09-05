@@ -456,13 +456,13 @@ async def main():
     uasyncio.create_task(app.start_server(host='0.0.0.0', port=80))
 
     if rtc_json["boot_log"]:
-        print("[INFO] [MAIN] *--- LOADED HISTORY ---*")
+        print("\n\n[INFO] [MAIN] *--- LOADED HISTORY ---*\n")
 
     for log in rtc_json["boot_log"]:
         print(log)
 
     if rtc_json["boot_log"]:
-        print("[INFO] [MAIN] *--- LOADED HISTORY ---*")
+        print("\n[INFO] [MAIN] *--- LOADED HISTORY ---*\n\n")
 
     print("[INITIAL] [MAIN] starting main program...")
     while True:
