@@ -140,6 +140,7 @@ if not rtc_json["auth"]:
 
 config = rtc_json["config"]
 AUTH_USERS = rtc_json["auth"]["user_id"]
+ADMINS = rtc_json["auth"]["user_admin"]
 TOKEN = config.get("token")
 URL = f"https://botapi.rubika.ir/v3/{TOKEN}"
 SSID = config.get("ssid")
@@ -339,17 +340,17 @@ async def command_routing(msgtype: str, chat_id: str, text: str|None, sender_id:
         print(f"[INFO] [COMMAND] /info received from {sender_id} in {chat_id}")
         await send_text_message(chat_id, await get_info_str(chat_id))
 
-    elif msgtype == "NewMessage" and text == "/sreset" and str(sender_id) in ADMIN_USERS:
+    elif msgtype == "NewMessage" and text == "/sreset" and str(sender_id) in ADMINS:
         print(f"[INFO] [COMMAND] /sreset received from {sender_id} in {chat_id}")
         await send_text_message(chat_id, "control command: /sreset received.\n soft resetting will happen in the next iteration.")
         c_cmnd["comm"] = "sreset"
 
-    elif msgtype == "NewMessage" and text == "/hreset" and str(sender_id) in ADMIN_USERS:
+    elif msgtype == "NewMessage" and text == "/hreset" and str(sender_id) in ADMINS:
         print(f"[INFO] [COMMAND] /hreset received from admin {sender_id} in {chat_id}")
         await send_text_message(chat_id, "control command: /rreset received.\n HARD resetting will happen in the next iteration.")
         c_cmnd["comm"] = "hreset"
 
-    elif msgtype == "NewMessage" and text.startswith("/lsleep") and str(sender_id) in ADMIN_USERS:
+    elif msgtype == "NewMessage" and text.startswith("/lsleep") and str(sender_id) in ADMINS:
         print(f"[INFO] [COMMAND] /lsleep received from admin {sender_id} in {chat_id}")
         duration = text.split()[1]
         try:
@@ -364,7 +365,7 @@ async def command_routing(msgtype: str, chat_id: str, text: str|None, sender_id:
         elif duration: # surpasses WDT limit.
             await send_text_message(chat_id, f"specified duration surpasses WDT limit. valid range: [1, 150] seconds. try again.")
 
-    elif msgtype == "NewMessage" and text.startswith("/dsleep") and str(sender_id) in ADMIN_USERS:
+    elif msgtype == "NewMessage" and text.startswith("/dsleep") and str(sender_id) in ADMINS:
         print(f"[INFO] [COMMAND] /dsleep received from admin {sender_id} in {chat_id}")
         duration = text.split()[1]
         try:
