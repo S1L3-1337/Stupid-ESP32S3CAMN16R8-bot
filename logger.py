@@ -38,4 +38,4 @@ def custom_log_print(*args, **kwargs):
 
     if boot_phase or no_ws:
         rtc_json["boot_log"].append(full_message) # save the boot logs for future's websocket in main.py
-        RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
+        RTC().memory(ujson.dumps(rtc_json).encode("utf-8"))

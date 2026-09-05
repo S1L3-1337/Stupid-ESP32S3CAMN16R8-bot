@@ -480,6 +480,7 @@ async def main():
                 reset()
             if len(logger.rtc_json["boot_log"]) > LOG_MAX:
                 del logger.rtc_json["boot_log"][:50]
+                RTC().memory(ujson.dumps(logger.rtc_json).encode("utf-8"))
         except Exception as e:
             print(f"[ERROR] [MAIN] Main loop error: {e}")
             await session.close()
