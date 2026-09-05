@@ -31,7 +31,7 @@ def rollback_mechanism():
 def concrete_check():
     for i in range(10):
         try:
-            return ugit.check_for_updates()
+            return ugit.check_for_updates(isconnected=True)
         except Exception as e:
             print(e)
             if isinstance(e, OSError):

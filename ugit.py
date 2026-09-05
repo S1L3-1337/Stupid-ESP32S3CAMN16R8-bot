@@ -30,6 +30,9 @@ import machine
 import time
 import network
 import random
+import logger
+
+print = logger.custom_log_print
 
 _GITHUB_API = 'https://api.github.com/repos'
 _GITHUB_RAW = 'https://raw.githubusercontent.com'

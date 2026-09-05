@@ -13,6 +13,7 @@ except Exception:
     rtc_json = {"config": {}, "auth": {}, "l_offset": "", "boot_log": []}
 
 boot_phase = False
+no_ws = True
 original_print = print
 active_connections = set()
 
@@ -25,12 +26,16 @@ def custom_log_print(*args, **kwargs):
     original_print(full_message, **kwargs)
 
     if not boot_phase:
-        for wsocket in active_connections:
-            try:
-                uasyncio.create_task(wsocket.send(full_message))
-            except:
-                original_print("[WARNING] [WEBSOCKET] an error occured during sending operation.")
+        if not active_connections:
+            no_ws = True
+        else:
+            no_ws = False
+            for wsocket in active_connections:
+                try:
+                    uasyncio.create_task(wsocket.send(full_message))
+                except:
+                    original_print("[WARNING] [WEBSOCKET] an error occured during sending operation.")
 
-    if boot_phase:
+    if boot_phase or no_ws:
         rtc_json["boot_log"].append(full_message) # save the boot logs for future's websocket in main.py
         RTC().memory(ujson.dumps(rtc_json).encode('utf-8'))
