@@ -9,9 +9,9 @@ import jpeg
 import os
 import gc
 import esp32
-from machine import WDT
+from machine import WDT, soft_reset
 from camera import Camera, PixelFormat, FrameSize, GrabMode
-from machine import RTC, reset, lightsleep, reset_cause
+from machine import RTC, reset, lightsleep, reset_cause, deepsleep
 from logger import original_print
 from microdot import Microdot
 from microdot.websocket import with_websocket
@@ -154,6 +154,7 @@ wlan = network.WLAN(network.STA_IF)
 idle_count = 1
 session = aiohttp.ClientSession()
 latest_offset = rtc_json["l_offset"]
+c_cmnd = {"comm": "", "dur": 0} # command, duration(ms)
 
 def connect_wifi():
     global wlan
@@ -228,7 +229,7 @@ enc = jpeg.Encoder(
     rotation=0
 )
 
-wdt = WDT(timeout=80000)
+wdt = WDT(timeout=151000) # ~2.51min ~ 151s
 
 def get_uptime(unit: str = 'D'):
     uptime_ms = time.ticks_diff(time.ticks_ms(), _BOOT_TICK)
@@ -320,24 +321,69 @@ async def get_updates(offset_id: str, lim: int = 10):
         print("[ERROR] [UPDATES] ratelimit exhausted. wait for 5s to finish.")
 
 async def command_routing(msgtype: str, chat_id: str, text: str|None, sender_id: str|None, message_id: str|None):
-    print("[INFO] [COMMAND]: new message received.")
+    global c_cmnd
     if msgtype == "StartedBot" and not (text or sender_id) and str(chat_id) not in AUTH_USERS:
         print(f"[INFO] [COMMAND] new /start received in {chat_id}")
         print(f"[INFO] [COMMAND] UNAUTHORIZED ACCESS IN {chat_id}. BLOCKING USER.../!")
+
     elif msgtype == "NewMessage" and text == "/start" and str(sender_id) in AUTH_USERS:
         print(f"[INFO] [COMMAND] /start received from {sender_id} in {chat_id}")
         print(f"[INFO] [COMMAND] user {sender_id} is already authorized")
         await send_text_message(chat_id, "Your already authorized.\n use /capture to recieve new photos.\n use /info to get MCU's stats and info.")
+
     elif msgtype == "NewMessage" and text == "/capture" and str(sender_id) in AUTH_USERS:
         print(f"[COMMAND] /capture received from {sender_id} in {chat_id}")
         await send_images(chat_id, message_id)
+
     elif msgtype == "NewMessage" and text == "/info" and str(sender_id) in AUTH_USERS:
         print(f"[INFO] [COMMAND] /info received from {sender_id} in {chat_id}")
         await send_text_message(chat_id, await get_info_str(chat_id))
+
+    elif msgtype == "NewMessage" and text == "/sreset" and str(sender_id) in ADMIN_USERS:
+        print(f"[INFO] [COMMAND] /sreset received from {sender_id} in {chat_id}")
+        await send_text_message(chat_id, "control command: /sreset received.\n soft resetting will happen in the next iteration.")
+        c_cmnd["comm"] = "sreset"
+
+    elif msgtype == "NewMessage" and text == "/hreset" and str(sender_id) in ADMIN_USERS:
+        print(f"[INFO] [COMMAND] /hreset received from admin {sender_id} in {chat_id}")
+        await send_text_message(chat_id, "control command: /rreset received.\n HARD resetting will happen in the next iteration.")
+        c_cmnd["comm"] = "hreset"
+
+    elif msgtype == "NewMessage" and text.startswith("/lsleep") and str(sender_id) in ADMIN_USERS:
+        print(f"[INFO] [COMMAND] /lsleep received from admin {sender_id} in {chat_id}")
+        duration = text.split()[1]
+        try:
+            duration = int(duration)
+        except ValueError:
+            await send_text_message(chat_id, f"invalid duration specified. try again.")
+            duration = None
+        if duration and duration <= 150: # shortcircuit
+            await send_text_message(chat_id, f"control command: /lsleep received.\n light sleep for {duration}s will happen in the next iteration.")
+            c_cmnd["comm"] = "lsleep"
+            c_cmnd["dur"] = duration * 1000
+        elif duration: # surpasses WDT limit.
+            await send_text_message(chat_id, f"specified duration surpasses WDT limit. valid range: [1, 150] seconds. try again.")
+
+    elif msgtype == "NewMessage" and text.startswith("/dsleep") and str(sender_id) in ADMIN_USERS:
+        print(f"[INFO] [COMMAND] /dsleep received from admin {sender_id} in {chat_id}")
+        duration = text.split()[1]
+        try:
+            duration = int(duration)
+        except ValueError:
+            await send_text_message(chat_id, f"invalid duration specified. try again.")
+            duration = None
+        if duration and duration <= 150: # shortcircuit
+            await send_text_message(chat_id, f"control command: /dsleep received.\n deep sleep for {duration}s will happen in the next iteration.")
+            c_cmnd["comm"] = "dsleep"
+            c_cmnd["dur"] = duration * 1000
+        elif duration: # surpasses WDT limit.
+            await send_text_message(chat_id, f"specified duration surpasses WDT limit. valid range: [1, 150] seconds. try again.")
+
     elif msgtype == "NewMessage" and (str(sender_id) not in AUTH_USERS):
         print(f"[INFO] [MESSAGE] message received from an unauthorized user: {sender_id} in {chat_id}")
+
     else:
-        await send_text_message(chat_id, "unknown command!\n use /capture to capture new photos\n use /info to get MCU's stats and info.")
+        await send_text_message(chat_id, "unknown command!\n*---* Users: use /capture to capture new photos\nuse /info to get MCU's stats and info.\n\n*---*Admins: use /sreset to soft reset the MCU.\nuse /hreset to hard reset the MCU.\nuse /lsleep {seconds} to send the MCU to lightsleep for specified duration\nuse /dsleep {seconds} to send MCU to deepsleep for specified duration")
 
 async def send_text_message(chat_id: str, msg: str):
         payload = {
@@ -461,6 +507,21 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
 
     return full_payload, custom_headers # --- END OF AI-ASSISTED PART
 
+def ctrl_command_check():
+    global c_cmnd
+    if c_cmnd["comm"] == "sreset":
+        soft_reset()
+    elif c_cmnd["comm"] == "hreset":
+        reset()
+    elif c_cmnd["comm"] == "lsleep":
+        lightsleep(c_cmnd["dur"])
+        c_cmnd["comm"] = ""
+        c_cmnd["dur"] = 0
+    elif c_cmnd["comm"] == "dsleep":
+        deepsleep(c_cmnd["dur"])
+    else:
+        pass
+
 async def main():
     print("[INITIAL] [WEBSOCKET] starting WEBSOCKET...")
     uasyncio.create_task(app.start_server(host='0.0.0.0', port=80))
@@ -468,6 +529,7 @@ async def main():
     print("[INITIAL] [MAIN] starting main program...")
     while True:
         try:
+            ctrl_command_check()
             wdt.feed()
             await get_updates(latest_offset, 50)
             gc.collect()
@@ -479,6 +541,7 @@ async def main():
                 await session.close()
                 reset()
             if len(logger.rtc_json["boot_log"]) > LOG_MAX:
+                print("[INFO] [MAIN] removing old logs...")
                 del logger.rtc_json["boot_log"][:50]
                 RTC().memory(ujson.dumps(logger.rtc_json).encode("utf-8"))
         except Exception as e:
