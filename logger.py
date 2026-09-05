@@ -18,6 +18,7 @@ original_print = print
 active_connections = set()
 
 def custom_log_print(*args, **kwargs):
+    global no_ws
     now = time.gmtime()
     p_timestamp = "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(now[0], now[1], now[2], now[3], now[4], now[5])
     log_text = " ".join(str(arg) for arg in args)
@@ -37,5 +38,11 @@ def custom_log_print(*args, **kwargs):
                     original_print("[WARNING] [WEBSOCKET] an error occured during sending operation.")
 
     if boot_phase or no_ws:
-        rtc_json["boot_log"].append(full_message) # save the boot logs for future's websocket in main.py
-        RTC().memory(ujson.dumps(rtc_json).encode("utf-8"))
+        try:
+            rtc_json["boot_log"].append(full_message) # save the boot logs for future's websocket in main.py
+            RTC().memory(ujson.dumps(rtc_json).encode("utf-8"))
+        except ValueError as e:
+            print("[ERROR] [LOGGER] buffer overflow...")
+            print("[ERROR] [LOGGER] removing old logs...")
+            rtc_json["boot_log"] = [full_message]
+            RTC().memory(ujson.dumps(rtc_json).encode("utf-8"))
