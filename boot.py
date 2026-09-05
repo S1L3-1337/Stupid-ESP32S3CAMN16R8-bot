@@ -56,7 +56,7 @@ def concrete_update():
         uflag = concrete_check()
         if uflag is not None:
             if (uflag["new"] or uflag["changed"] or uflag["deleted"]):
-                print("[INFO] [OTA] New updates found. Downloading...")
+                print("[INFO] [OTA] New updates found. Updating...")
                 ugit.backup()
                 backup_created = True
                 ugit.pull_all(isconnected=True, branch="main")

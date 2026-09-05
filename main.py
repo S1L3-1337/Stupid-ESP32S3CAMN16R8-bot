@@ -85,12 +85,12 @@ async def ws_log_stream(request, ws):
     print(f"[INFO] [WEBSOCKET] Diagnostic client attached. Total open web sockets: {len(logger.active_connections)}")
 
     if rtc_json["boot_log"]:
-        uasyncio.create_task(ws.send("[INFO] [MAIN] *--- LOADED HISTORY ---*"))
+        uasyncio.create_task(ws.send("[INFO] [MAIN] *--- LOADED HISTORY [LAST 50] ---*"))
 
         for log in rtc_json["boot_log"]:
             uasyncio.create_task(ws.send(log))
 
-        uasyncio.create_task(ws.send("[INFO] [MAIN] *--- BOOT HISTORY ---*"))
+        uasyncio.create_task(ws.send("[INFO] [MAIN] *--- BOOT HISTORY [LAST 50] ---*"))
 
     try:
         while True:
@@ -149,6 +149,7 @@ LAST_PUSH = time.ticks_ms()
 HEADERS = {'Content-Type': 'application/json'}
 _BOOT_TICK = time.ticks_ms()
 BASE_OFFSET = "6a94b3b0577044b7a9bba2ab"
+LOG_MAX = 50
 wlan = network.WLAN(network.STA_IF)
 idle_count = 1
 session = aiohttp.ClientSession()
@@ -477,6 +478,8 @@ async def main():
                 print("[INFO] [MAIN] 6 days limit reached. hardresetting...")
                 await session.close()
                 reset()
+            if len(logger.rtc_json["boot_log"]) > LOG_MAX:
+                del logger.rtc_json["boot_log"][:50]
         except Exception as e:
             print(f"[ERROR] [MAIN] Main loop error: {e}")
             await session.close()

@@ -33,6 +33,7 @@ import random
 import logger
 
 print = logger.custom_log_print
+logger.boot_phase = True
 
 _GITHUB_API = 'https://api.github.com/repos'
 _GITHUB_RAW = 'https://raw.githubusercontent.com'
@@ -289,7 +290,7 @@ def wificonnect(ssid=None, password=None):
         retries += 1
         if retries > 30:
             raise OSError('WiFi connection timed out')
-    print('WiFi connected:', wlan.ifconfig()[0])
+    print('[INFO] [UGIT] WiFi connected:', wlan.ifconfig()[0])
     return wlan
 
 def wifidisconnect():
