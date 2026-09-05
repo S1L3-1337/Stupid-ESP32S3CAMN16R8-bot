@@ -546,8 +546,17 @@ async def main():
                 del logger.rtc_json["boot_log"][:50]
                 RTC().memory(ujson.dumps(logger.rtc_json).encode("utf-8"))
         except Exception as e:
-            print(f"[ERROR] [MAIN] Main loop error: {e}")
-            await session.close()
-            reset()
+            if isinstance(e, KeyboardInterrupt):
+                print("[NOTICE] [MAIN] KeyboardInterrupt detected...")
+                print("[NOTICE] [MAIN] graceful shutdown...")
+                RTC().memory(b'')
+                gc.collect()
+                gc.collect()
+                # TODO: WRITE TO FLASH. for later.
+                raise # propagates the current Exception
+            else:
+                print(f"[ERROR] [MAIN] Main loop error: {e}")
+                await session.close()
+                reset()
 
 uasyncio.run(main())
