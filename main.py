@@ -83,6 +83,15 @@ async def index(request):
 async def ws_log_stream(request, ws):
     logger.active_connections.add(ws)
     print(f"[INFO] [WEBSOCKET] Diagnostic client attached. Total open web sockets: {len(logger.active_connections)}")
+
+    if rtc_json["boot_log"]:
+        uasyncio.create_task(ws.send("[INFO] [MAIN] *--- LOADED HISTORY ---*"))
+
+        for log in rtc_json["boot_log"]:
+            uasyncio.create_task(ws.send(log))
+
+        uasyncio.create_task(ws.send("[INFO] [MAIN] *--- BOOT HISTORY ---*"))
+
     try:
         while True:
             data = await ws.receive()
@@ -454,15 +463,6 @@ def handle_encoding(image_bytes): # --- BEGINNING OF AI-ASSISTED PART ---
 async def main():
     print("[INITIAL] [WEBSOCKET] starting WEBSOCKET...")
     uasyncio.create_task(app.start_server(host='0.0.0.0', port=80))
-
-    if rtc_json["boot_log"]:
-        print("\n\n[INFO] [MAIN] *--- LOADED HISTORY ---*\n")
-
-    for log in rtc_json["boot_log"]:
-        print(log)
-
-    if rtc_json["boot_log"]:
-        print("\n[INFO] [MAIN] *--- LOADED HISTORY ---*\n\n")
 
     print("[INITIAL] [MAIN] starting main program...")
     while True:
