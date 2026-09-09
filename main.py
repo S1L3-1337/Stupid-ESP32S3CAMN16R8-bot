@@ -17,67 +17,228 @@ from logger import original_print
 from microdot import Microdot
 from microdot.websocket import with_websocket
 
+cam = Camera(
+    data_pins=[11, 9, 8, 10, 12, 18, 17, 16],
+    vsync_pin=6, href_pin=7, sda_pin=4, scl_pin=5,
+    pclk_pin=13, xclk_pin=15,
+    xclk_freq=20000000,
+    powerdown_pin=-1, reset_pin=-1,
+    pixel_format=PixelFormat.RGB565,
+    frame_size=FrameSize.VGA,
+    fb_count=2,
+    grab_mode=GrabMode.LATEST,
+    init=False
+)
+cam.init()
+time.sleep(5)
+
+enc = jpeg.Encoder(
+    width=640,
+    height=480,
+    pixel_format="RGB565_BE",
+    quality=85,
+    rotation=0
+)
+
+def capture_image():
+    frame = cam.capture()
+    if frame:
+        rgb565_bytes = bytes(frame)
+        print(f"[INFO] [CAM] Captured {len(rgb565_bytes)} bytes of raw RGB565")
+        jpeg = enc.encode(rgb565_bytes)
+        print(f"[INFO] [CAM] file encoded Successfully! image size: {len(jpeg)} bytes")
+        cam.free_buffer()
+        now = time.gmtime()
+        return jpeg, "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
+            now[0], now[1], now[2], now[3], now[4], now[5]
+        )
+    else:
+        print("[ERROR] [CAM] capture failed...")
+        return None
+
+
 app = Microdot()
 print = logger.custom_log_print
 
-@app.route('/') # --- BEGINNING OF AI-ASSISTED PART ---
+@app.route('/')
 async def index(request):
     html_page = """<!DOCTYPE html>
-    <html>
-    <head>
-        <title>Live Camera Log Terminal</title>
-        <style>
-            body { background: #121212; color: #00ff00; font-family: 'Courier New', monospace; padding: 20px; margin: 0; }
-            h2 { color: #ffffff; margin-top: 0; border-bottom: 1px solid #333; padding-bottom: 10px; }
-            #terminal {
-                background: #0a0a0a; border: 1px solid #333; border-radius: 5px;
-                padding: 15px; height: 70vh; overflow-y: scroll; display: flex; flex-direction: column;
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32-S3 Control Center</title>
+    <style>
+        :root {
+            --bg-primary: #0f1115; --bg-secondary: #161b22; --bg-terminal: #0d1117;
+            --text-primary: #c9d1d9; --text-secondary: #8b949e; --accent-primary: #58a6ff;
+            --accent-success: #2ea043; --accent-warning: #d29922; --accent-danger: #da3633;
+            --border-color: #30363d;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { background-color: var(--bg-primary); color: var(--text-primary); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 20px; line-height: 1.5; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid var(--border-color); }
+        h1 { font-size: 1.5rem; font-weight: 600; color: #ffffff; }
+        h3 { font-size: 0.9rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-secondary); margin-bottom: 12px; }
+        .status-badge { padding: 6px 12px; border-radius: 20px; font-size: 0.85rem; font-weight: 600; background: var(--bg-secondary); border: 1px solid var(--border-color); color: var(--accent-danger); transition: all 0.3s ease; }
+        .status-badge.connected { color: var(--accent-success); border-color: var(--accent-success); }
+        .dashboard { display: grid; grid-template-columns: 300px 1fr; gap: 20px; }
+        @media (max-width: 768px) { .dashboard { grid-template-columns: 1fr; } }
+        .control-panel { background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 20px; height: fit-content; }
+        .button-grid { display: grid; gap: 10px; margin-bottom: 24px; }
+        .input-group { margin-bottom: 16px; }
+        .input-group label { display: block; font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 6px; }
+        .input-row { display: flex; gap: 8px; }
+        input[type="number"] { flex: 1; background: var(--bg-primary); border: 1px solid var(--border-color); color: var(--text-primary); padding: 8px 12px; border-radius: 6px; font-family: monospace; font-size: 0.9rem; }
+        input[type="number"]:focus { outline: none; border-color: var(--accent-primary); }
+        button { width: 100%; padding: 10px 16px; border: 1px solid transparent; border-radius: 6px; font-weight: 600; font-size: 0.9rem; cursor: pointer; transition: all 0.2s ease; display: flex; align-items: center; justify-content: center; gap: 8px; }
+        button:active { transform: translateY(1px); }
+        .btn-primary { background: var(--accent-primary); color: #ffffff; }
+        .btn-primary:hover { background: #79c0ff; }
+        .btn-success { background: var(--accent-success); color: #ffffff; }
+        .btn-warning { background: var(--accent-warning); color: #ffffff; }
+        .btn-danger { background: var(--accent-danger); color: #ffffff; }
+        .btn-secondary { background: var(--bg-primary); border-color: var(--border-color); color: var(--text-primary); }
+        .btn-secondary:hover { background: var(--border-color); }
+        .terminal-container { background: var(--bg-terminal); border: 1px solid var(--border-color); border-radius: 8px; display: flex; flex-direction: column; height: 60vh; overflow: hidden; }
+        .terminal-header { background: var(--bg-secondary); padding: 10px 15px; border-bottom: 1px solid var(--border-color); font-size: 0.85rem; color: var(--text-secondary); display: flex; justify-content: space-between; align-items: center; }
+        #terminal { flex: 1; padding: 15px; overflow-y: auto; font-family: 'Courier New', Courier, monospace; font-size: 0.85rem; line-height: 1.6; color: #e6edf3; }
+        #terminal::-webkit-scrollbar { width: 8px; }
+        #terminal::-webkit-scrollbar-track { background: var(--bg-terminal); }
+        #terminal::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 4px; }
+        .log-line { margin: 2px 0; word-break: break-all; white-space: pre-wrap; }
+        .log-line.error { color: var(--accent-danger); }
+        .log-line.warn { color: var(--accent-warning); }
+        .log-line.info { color: var(--accent-primary); }
+        .log-line.cmd { color: var(--accent-success); font-style: italic; }
+        .image-preview { margin-top: 20px; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 15px; text-align: center; }
+        .image-preview img { max-width: 100%; border-radius: 4px; border: 1px solid var(--border-color); display: none; }
+        .image-preview p { color: var(--text-secondary); font-size: 0.85rem; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎥 ESP32-S3 Control Center</h1>
+            <span id="status" class="status-badge">Disconnected</span>
+        </header>
+        <div class="dashboard">
+            <div class="control-panel">
+                <h3>System Controls</h3>
+                <div class="button-grid">
+                    <button class="btn-primary" onclick="sendCommand('!capture')">📸 Trigger Capture</button>
+                    <button class="btn-warning" onclick="sendCommand('!sreset')">🔄 Soft Reset</button>
+                    <button class="btn-danger" onclick="sendCommand('!hreset')">⚠️ Hard Reset</button>
+                </div>
+                <h3>Sleep Controls</h3>
+                <div class="input-group">
+                    <label>Duration (milliseconds)</label>
+                    <div class="input-row">
+                        <input type="number" id="sleepDuration" value="30000" min="1000" step="1000">
+                    </div>
+                </div>
+                <div class="button-grid">
+                    <button class="btn-secondary" onclick="sendSleepCommand('!lsleep')">💤 Light Sleep</button>
+                    <button class="btn-danger" onclick="sendSleepCommand('!dsleep')">🔌 Deep Sleep</button>
+                </div>
+            </div>
+            <div>
+                <div class="terminal-container">
+                    <div class="terminal-header">
+                        <span>System Diagnostic Console</span>
+                        <span style="font-size: 0.75rem; color: var(--text-secondary);">Auto-scrolls unless paused</span>
+                    </div>
+                    <div id="terminal"></div>
+                </div>
+                <div class="image-preview">
+                    <p>Latest Capture Preview</p>
+                    <img id="cameraPreview" src="" alt="Camera Preview">
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const terminal = document.getElementById('terminal');
+        const statusBadge = document.getElementById('status');
+        const cameraPreview = document.getElementById('cameraPreview');
+        let isUserScrolling = false;
+
+        terminal.addEventListener('scroll', () => {
+            const diff = terminal.scrollHeight - terminal.clientHeight - terminal.scrollTop;
+            isUserScrolling = diff > 50;
+        });
+
+        function appendLog(text, type = 'info') {
+            const line = document.createElement('div');
+            line.className = `log-line ${type}`;
+            line.textContent = text;
+            terminal.appendChild(line);
+            if (!isUserScrolling) { terminal.scrollTop = terminal.scrollHeight; }
+        }
+
+        function sendCommand(cmd) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(cmd);
+                appendLog(`[CMD SENT] ${cmd}`, 'cmd');
+            } else {
+                appendLog('[ERROR] WebSocket is not connected.', 'error');
             }
-            .log-line { margin: 3px 0; word-break: break-all; white-space: pre-wrap; }
-            .system-tag { color: #00adb5; }
-        </style>
-    </head>
-    <body>
-        <h2>🎥 Live System Diagnostic Console</h2>
-        <div id="terminal"></div>
+        }
 
-        <script>
-            const terminal = document.getElementById('terminal');
-            let isUserScrolling = false;
+        function sendSleepCommand(cmd) {
+            const duration = document.getElementById('sleepDuration').value;
+            sendCommand(`${cmd} ${duration}`);
+        }
 
-            // Detect manual scrolling up so we don't snap the user downward
-            terminal.addEventListener('scroll', () => {
-                const diff = terminal.scrollHeight - terminal.clientHeight - terminal.scrollTop;
-                isUserScrolling = diff > 50; // User scrolled up by more than 50px
-            });
+        function refreshImage() {
+            // Cache-busting trick to force the browser to fetch a fresh image
+            cameraPreview.src = `/snapshot?t=${new Date().getTime()}`;
+            cameraPreview.style.display = 'block';
+            appendLog('[INFO] Fetching latest image snapshot...', 'info');
+        }
 
-            function appendLog(text) {
-                const line = document.createElement('div');
-                line.className = 'log-line';
-                line.textContent = text;
-                terminal.appendChild(line);
+        const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
 
-                // Auto scroll to bottom ONLY if user isn't reading history above
-                if (!isUserScrolling) {
-                    terminal.scrollTop = terminal.scrollHeight;
-                }
+        ws.onopen = () => {
+            statusBadge.textContent = 'Connected';
+            statusBadge.classList.add('connected');
+            appendLog('[INFO] [WEBSOCKET] Connected to ESP32-S3.', 'info');
+        };
+
+        ws.onmessage = (event) => {
+            // If the server sends the literal string "!REFRESH_IMAGE", update the preview
+            if (event.data === "!REFRESH_IMAGE") {
+                refreshImage();
+            } else {
+                // Otherwise, treat it as a standard log line
+                let type = 'info';
+                if (event.data.includes('[ERROR]')) type = 'error';
+                else if (event.data.includes('[WARN]')) type = 'warn';
+                else if (event.data.includes('[CMD]')) type = 'cmd';
+                appendLog(event.data, type);
             }
+        };
 
-            // Connect automatically to the MicroPython WebSocket
-            const ws = new WebSocket('ws://' + window.location.host + '/ws');
+        ws.onclose = () => {
+            statusBadge.textContent = 'Disconnected';
+            statusBadge.classList.remove('connected');
+            appendLog('[ERROR] [WEBSOCKET] Connection lost to camera server.', 'error');
+            setTimeout(() => location.reload(), 3000); // Auto-reconnect
+        };
+    </script>
+</body>
+</html>"""
+    return html_page, 200, {'Content-Type': 'text/html'}
 
-            ws.onmessage = function(event) {
-                appendLog(event.data);
-            };
-
-            ws.onclose = function() {
-                appendLog("[ERROR] [WEBSOCKET] Connection lost to camera server.");
-            };
-        </script>
-    </body>
-    </html>
-    """
-    return html_page, 200, {'Content-Type': 'text/html'} # --- END OF AI-ASSISTED PART ---
+@app.route('/snapshot')
+async def snapshot(request):
+    result = capture_image()
+    if result:
+        return result[0], 200, {'Content-Type': 'image/jpeg'}
+    else:
+        return "Capture Failed", 500
 
 @app.route("/ws")
 @with_websocket
@@ -95,9 +256,36 @@ async def ws_log_stream(request, ws):
 
     try:
         while True:
-            data = await ws.receive()
+            data: str = await ws.receive()
             if not data:
                 break
+            else:
+                if data.startswith("!capture"):
+                    jpeg = capture_image()
+                    if jpeg:
+                        print(f"[INFO] [CAM] Capture successful. Refreshing preview...")
+                        uasyncio.create_task(ws.send("!REFRESH_IMAGE"))
+                    else:
+                        print("[WARNING] [WEBSOCKET] image send failed.")
+
+                elif data.startswith("!sreset"):
+                    print("[INFO] [WEBSOCKET] Soft reset initiated...")
+                    c_cmnd["comm"] = "sreset"
+                elif data.startswith("!hreset"):
+                    print("[INFO] [WEBSOCKET] Hard reset initiated...")
+                    c_cmnd["comm"] = "hreset"
+                elif data.startswith("!lsleep"):
+                    parts = data.split()
+                    print(f"[INFO] [WEBSOCKET] light sleep initiated for {parts[1]} seconds... ")
+                    c_cmnd["comm"] = "lsleep"
+                    c_cmnd["dur"] = int(parts[1])
+                elif data.startswith("!dsleep"):
+                    parts = data.split()
+                    print(f"[INFO] [WEBSOCKET] deep sleep initiated for {parts[1]} seconds... ")
+                    c_cmnd["comm"] = "dsleep"
+                    c_cmnd["dur"] = int(parts[1])
+                else:
+                    print(f"[WARNING] [WEBSOCKET] unknown command: {data}")
     except:
         pass
     finally:
@@ -205,30 +393,6 @@ if not rtc_json["l_offset"]:
         latest_offset = uasyncio.run(find_last_offset(BASE_OFFSET))
 
 
-
-cam = Camera(
-    data_pins=[11, 9, 8, 10, 12, 18, 17, 16],
-    vsync_pin=6, href_pin=7, sda_pin=4, scl_pin=5,
-    pclk_pin=13, xclk_pin=15,
-    xclk_freq=20000000,
-    powerdown_pin=-1, reset_pin=-1,
-    pixel_format=PixelFormat.RGB565,
-    frame_size=FrameSize.VGA,
-    fb_count=2,
-    grab_mode=GrabMode.LATEST,
-    init=False
-)
-cam.init()
-time.sleep(5)
-
-enc = jpeg.Encoder(
-    width=640,
-    height=480,
-    pixel_format="RGB565_BE",
-    quality=85,
-    rotation=0
-)
-
 wdt = WDT(timeout=151000) # ~2.51min ~ 151s
 
 def get_uptime(unit: str = 'D'):
@@ -240,24 +404,6 @@ def get_uptime(unit: str = 'D'):
     else:
         print("[ERROR] [UPTIME] unknown unit.")
         raise ValueError
-
-
-def capture_image():
-    frame = cam.capture()
-    if frame:
-        rgb565_bytes = bytes(frame)
-        print(f"[INFO] [CAM] Captured {len(rgb565_bytes)} bytes of raw RGB565")
-        jpeg = enc.encode(rgb565_bytes)
-        print(f"[INFO] [CAM] file encoded Successfully! image size: {len(jpeg)} bytes")
-        cam.free_buffer()
-        now = time.gmtime()
-        return jpeg, "{:04d}-{:02d}-{:02d} {:02d}:{:02d}:{:02d}".format(
-            now[0], now[1], now[2], now[3], now[4], now[5]
-        )
-    else:
-        print("[ERROR] [CAM] capture failed...")
-        return None
-
 
 async def update_offset(offset_id: str):
     global rtc_json
