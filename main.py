@@ -1,4 +1,5 @@
 import time
+import ntptime
 import network
 import uasyncio
 import ujson
@@ -170,8 +171,6 @@ def connect_wifi():
         time.sleep_ms(500)
         original_print(".", end="")
     print("[INFO] [WIFI] Connected! IP: ", wlan.ifconfig()[0])
-
-connect_wifi()
 
 async def find_last_offset(base_offset: str):
     print("[DEBUG] trying to find latest offset...")
@@ -525,6 +524,13 @@ def ctrl_command_check():
 
 async def main():
     print("[INITIAL] [WEBSOCKET] starting WEBSOCKET...")
+    connect_wifi()
+    ntptime.host = "ntp.time.ir"
+    try:
+        ntptime.settime()
+    except Exception as e:
+        print(f"[ERROR] [MAIN] NTP Synchronization failed:\n{e}\nTimestamps may be inaccurate")
+
     uasyncio.create_task(app.start_server(host='0.0.0.0', port=80))
 
     print("[INITIAL] [MAIN] starting main program...")

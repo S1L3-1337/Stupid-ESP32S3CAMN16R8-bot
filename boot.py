@@ -3,6 +3,7 @@ from machine import reset
 import gc
 import errno
 import logger
+import ntptime
 
 backup_created = False
 network_codes = [errno.ECONNABORTED, errno.ECONNREFUSED, errno.ECONNRESET, errno.ETIMEDOUT, errno.EHOSTUNREACH, errno.ENOTCONN, -2, -202, -3]
@@ -105,12 +106,20 @@ def concrete_update():
             print("[ERROR] [OTA] retry-update operations failed due to non-network error. [POS=2]")
             rollback_mechanism()
 
+def set_ntp():
+    ntptime.host = "ntp.time.ir"
+    try:
+        ntptime.settime()
+    except Exception as e:
+        print(f"[ERROR] [MAIN] NTP Synchronization failed:\n{e}\nTimestamps may be inaccurate")
+
 def ota():
     try:
         gc.collect()
         gc.collect()
         wlan = ugit.wificonnect() # it will raise OSError after 30 tries so lets catch it.
         if wlan.isconnected():
+            set_ntp()
             concrete_update()
         else:
             for i in range(5):
@@ -121,6 +130,7 @@ def ota():
             if not wlan.isconnected():
                 print("[ERROR] [OTA] connecting to wifi failed. booting into main.py")
             else:
+                set_ntp()
                 concrete_update()
     except OSError:
         print("[ERROR] [OTA] connecting to wifi failed. booting into main.py...")
