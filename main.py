@@ -276,12 +276,12 @@ async def ws_log_stream(request, ws):
                     c_cmnd["comm"] = "hreset"
                 elif data.startswith("!lsleep"):
                     parts = data.split()
-                    print(f"[INFO] [WEBSOCKET] light sleep initiated for {parts[1]} seconds... ")
+                    print(f"[INFO] [WEBSOCKET] light sleep initiated for {parts[1]} ms... ")
                     c_cmnd["comm"] = "lsleep"
                     c_cmnd["dur"] = int(parts[1])
                 elif data.startswith("!dsleep"):
                     parts = data.split()
-                    print(f"[INFO] [WEBSOCKET] deep sleep initiated for {parts[1]} seconds... ")
+                    print(f"[INFO] [WEBSOCKET] deep sleep initiated for {parts[1]} ms... ")
                     c_cmnd["comm"] = "dsleep"
                     c_cmnd["dur"] = int(parts[1])
                 else:
